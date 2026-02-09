@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select, func
 from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.routes_alerts import router as alerts_router
@@ -16,6 +17,7 @@ from src.api.routes_products import router as products_router
 from src.auth import AuthMiddleware, router as auth_router
 from src.brands.registry import seed_all
 from src.config import settings
+from src.db.models import Product
 from src.db.session import async_session, init_db
 from src.tracking.scheduler import setup_scheduler, setup_keep_alive
 
@@ -26,6 +28,45 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def _run_discovery_if_needed() -> None:
+    """Run brand discovery on startup if the DB has no products.
+
+    This ensures data is populated after a fresh deploy on Render
+    (PostgreSQL starts empty) and on first-ever startup.
+    """
+    async with async_session() as session:
+        result = await session.execute(select(func.count(Product.id)))
+        product_count = result.scalar() or 0
+
+    if product_count > 0:
+        logger.info(f"DB already has {product_count} products — skipping startup discovery")
+        return
+
+    logger.info("No products in DB — running startup discovery...")
+
+    # Import here to avoid circular imports and keep startup fast when not needed
+    from src.brands.discovery import discover_and_store
+    from src.retailers import get_all_scrapers
+
+    scrapers = get_all_scrapers()
+
+    # Skip known-broken scrapers to avoid wasting time on startup
+    skip = {"simons", "ssense", "nordstrom"}
+    scrapers = {k: v for k, v in scrapers.items() if k not in skip}
+
+    async with async_session() as session:
+        stats = await discover_and_store(session, scrapers)
+
+    logger.info(
+        f"Startup discovery complete: {stats['new_products']} products, "
+        f"{stats['mappings_created']} brand-retailer mappings"
+    )
+
+    # Close scraper HTTP clients
+    for scraper in scrapers.values():
+        await scraper.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Cheap Finder")
@@ -33,6 +74,12 @@ async def lifespan(app: FastAPI):
 
     async with async_session() as session:
         await seed_all(session)
+
+    # Discover products if DB is empty (first deploy / fresh PostgreSQL)
+    try:
+        await _run_discovery_if_needed()
+    except Exception:
+        logger.exception("Startup discovery failed — will retry on next restart")
 
     scheduler = setup_scheduler()
 
