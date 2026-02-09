@@ -187,6 +187,12 @@ class AltitudeSportsScraper(RetailerBase):
         else:
             thumbnail_url = image_url
 
+        # Extract brand name from attributes
+        attributes = hit.get("attributes", {})
+        brand_name = ""
+        if isinstance(attributes, dict):
+            brand_name = attributes.get("brand_name", "")
+
         return ScrapedProduct(
             name=name,
             url=url,
@@ -195,4 +201,5 @@ class AltitudeSportsScraper(RetailerBase):
             on_sale=on_sale,
             image_url=image_url,
             thumbnail_url=thumbnail_url,
+            brand=brand_name,
         )

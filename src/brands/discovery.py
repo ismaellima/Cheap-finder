@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,78 @@ from src.db.models import Brand, BrandRetailer, PriceRecord, Product, Retailer
 from src.retailers.base import RetailerBase, ScrapedProduct
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize(name: str) -> str:
+    """Normalize a brand name for fuzzy comparison.
+
+    Strips punctuation, extra whitespace, and lowercases.
+    E.g. "Arc'teryx" → "arcteryx", "A.P.C." → "apc"
+    """
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def _brand_matches(
+    scraped_brand: str,
+    brand_name: str,
+    aliases: list[str],
+) -> bool:
+    """Check if a scraped product's brand matches the expected brand.
+
+    If the scraper didn't return a brand name (empty string), we assume
+    it matches (collection-scoped scrapers like Shopify already filter).
+
+    Otherwise we compare the scraped brand against the brand name and
+    all its aliases using normalized fuzzy matching.
+    """
+    if not scraped_brand:
+        # Scraper didn't provide brand info — trust the result
+        return True
+
+    norm_scraped = _normalize(scraped_brand)
+    if not norm_scraped:
+        return True
+
+    # Build set of acceptable normalized brand names
+    acceptable = {_normalize(brand_name)}
+    for alias in aliases:
+        acceptable.add(_normalize(alias))
+
+    # Direct match
+    if norm_scraped in acceptable:
+        return True
+
+    # Substring match — only for names >= 4 chars to avoid false positives
+    # (e.g. "on" matching "salm-on", "nb" matching "bnb")
+    for name in acceptable:
+        if name and len(name) >= 4 and (name in norm_scraped or norm_scraped in name):
+            return True
+
+    return False
+
+
+def _filter_by_brand(
+    products: list[ScrapedProduct],
+    brand: Brand,
+) -> list[ScrapedProduct]:
+    """Filter scraped products to only those matching the expected brand."""
+    aliases = json.loads(brand.aliases) if brand.aliases else []
+    filtered = []
+    rejected = 0
+
+    for p in products:
+        if _brand_matches(p.brand, brand.name, aliases):
+            filtered.append(p)
+        else:
+            rejected += 1
+
+    if rejected > 0:
+        logger.info(
+            f"Brand filter: kept {len(filtered)}, "
+            f"rejected {rejected} non-{brand.name} products"
+        )
+
+    return filtered
 
 
 async def discover_brand_at_retailer(
@@ -27,6 +100,11 @@ async def discover_brand_at_retailer(
         try:
             products = await scraper.search_brand(term)
             if products:
+                # Filter out products that don't belong to this brand
+                products = _filter_by_brand(products, brand)
+                if not products:
+                    continue
+
                 # Create or verify BrandRetailer mapping
                 existing = await session.execute(
                     select(BrandRetailer).where(

@@ -129,12 +129,17 @@ class SportingLifeScraper(RetailerBase):
             if image_url.startswith("//"):
                 image_url = "https:" + image_url
 
+        # Extract brand from product card
+        brand_el = card.select_one(".product-brand, .brand, .brand-name")
+        brand_name = brand_el.get_text(strip=True) if brand_el else ""
+
         return ScrapedProduct(
             name=name,
             url=href,
             price=price,
             image_url=image_url,
             thumbnail_url=image_url,
+            brand=brand_name,
         )
 
     def _extract_json_ld(self, soup) -> list[ScrapedProduct]:
@@ -154,12 +159,19 @@ class SportingLifeScraper(RetailerBase):
                             if isinstance(offers, list):
                                 offers = offers[0] if offers else {}
                             price = self.parse_price(str(offers.get("price", "")))
+                            brand_info = item.get("brand", {})
+                            brand_name = ""
+                            if isinstance(brand_info, dict):
+                                brand_name = brand_info.get("name", "")
+                            elif isinstance(brand_info, str):
+                                brand_name = brand_info
                             if name and price:
                                 products.append(ScrapedProduct(
                                     name=name,
                                     url=url if url.startswith("http") else f"{self.base_url}{url}",
                                     price=price,
                                     image_url=item.get("image", ""),
+                                    brand=brand_name,
                                 ))
             except (json.JSONDecodeError, AttributeError):
                 continue

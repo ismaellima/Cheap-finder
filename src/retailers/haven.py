@@ -137,6 +137,14 @@ class HavenScraper(RetailerBase):
         if url and not url.startswith("http"):
             url = f"{self.base_url}{url}"
 
+        # Extract brand from JSON-LD
+        brand_info = data.get("brand", {})
+        brand_name = ""
+        if isinstance(brand_info, dict):
+            brand_name = brand_info.get("name", "")
+        elif isinstance(brand_info, str):
+            brand_name = brand_info
+
         return ScrapedProduct(
             name=name,
             url=url,
@@ -144,6 +152,7 @@ class HavenScraper(RetailerBase):
             image_url=image,
             thumbnail_url=image,
             sku=data.get("sku", ""),
+            brand=brand_name,
         )
 
     def _parse_remix_context(self, soup) -> list[ScrapedProduct]:
@@ -217,4 +226,5 @@ class HavenScraper(RetailerBase):
             on_sale=on_sale,
             image_url=image,
             thumbnail_url=image,
+            brand=node.get("vendor", ""),
         )

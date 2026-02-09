@@ -155,6 +155,7 @@ class ShopifyBase(RetailerBase):
             thumbnail_url=thumbnail_url,
             sku=str(variant.get("sku", "")),
             gender=gender,
+            brand=product.get("vendor", ""),
         )
 
     def _parse_search_product(self, product: dict) -> ScrapedProduct | None:
@@ -183,6 +184,7 @@ class ShopifyBase(RetailerBase):
             on_sale=on_sale,
             image_url=image,
             thumbnail_url=image,
+            brand=product.get("vendor", ""),
         )
 
     @staticmethod
