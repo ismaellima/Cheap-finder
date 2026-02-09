@@ -14,6 +14,48 @@ from src.db.session import get_session
 router = APIRouter(prefix="/api/brands", tags=["brands"])
 
 
+# --- Export endpoint (brands + retailers in one call) ---
+
+from fastapi import APIRouter as _AR
+
+export_router = _AR(prefix="/api", tags=["export"])
+
+
+@export_router.get("/export")
+async def export_all(session: AsyncSession = Depends(get_session)):
+    """Export all brands and retailers as JSON for syncing to local dev."""
+    brands_result = await session.execute(select(Brand).order_by(Brand.name))
+    brands = brands_result.scalars().all()
+
+    retailers_result = await session.execute(select(Retailer).order_by(Retailer.name))
+    retailers = retailers_result.scalars().all()
+
+    return {
+        "brands": [
+            {
+                "name": b.name,
+                "slug": b.slug,
+                "aliases": json.loads(b.aliases) if b.aliases else [],
+                "category": b.category or "",
+                "alert_threshold_pct": b.alert_threshold_pct,
+                "active": b.active,
+            }
+            for b in brands
+        ],
+        "retailers": [
+            {
+                "name": r.name,
+                "slug": r.slug,
+                "base_url": r.base_url,
+                "scraper_type": r.scraper_type,
+                "requires_js": r.requires_js,
+                "active": r.active,
+            }
+            for r in retailers
+        ],
+    }
+
+
 class BrandCreate(BaseModel):
     name: str
     aliases: list[str] = []

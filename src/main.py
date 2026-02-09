@@ -11,7 +11,7 @@ from sqlalchemy import select, func
 from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.routes_alerts import router as alerts_router
-from src.api.routes_brands import router as brands_router
+from src.api.routes_brands import router as brands_router, export_router
 from src.api.routes_dashboard import router as dashboard_router
 from src.api.routes_products import router as products_router
 from src.auth import AuthMiddleware, router as auth_router
@@ -136,6 +136,7 @@ app.mount("/static", StaticFiles(directory="src/static"), name="static")
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(brands_router)
+app.include_router(export_router)
 app.include_router(products_router)
 app.include_router(alerts_router)
 
