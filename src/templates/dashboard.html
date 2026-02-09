@@ -36,6 +36,17 @@
         <span>{{ brand_stats[brand.id].product_count }} products</span>
         <span>{{ brand_stats[brand.id].retailer_count }} retailers</span>
       </div>
+
+      {% if brand_retailers_map.get(brand.id) %}
+      <div class="flex flex-wrap gap-1 mt-2">
+        {% for retailer_name in brand_retailers_map[brand.id][:4] %}
+        <span class="text-[10px] text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-1.5 py-0.5 rounded">{{ retailer_name }}</span>
+        {% endfor %}
+        {% if brand_retailers_map[brand.id] | length > 4 %}
+        <span class="text-[10px] text-neutral-600">+{{ brand_retailers_map[brand.id] | length - 4 }} more</span>
+        {% endif %}
+      </div>
+      {% endif %}
     </a>
     {% endfor %}
 

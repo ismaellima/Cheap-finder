@@ -1,15 +1,26 @@
 from __future__ import annotations
 
 import json
+import re
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.status import HTTP_303_SEE_OTHER
 
 from src.config import settings
-from src.db.models import Brand, BrandRetailer, Notification, Product
+from src.db.models import (
+    Brand,
+    BrandRetailer,
+    Notification,
+    Product,
+    Retailer,
+    RetailerSuggestion,
+)
 from src.db.session import get_session
 
 router = APIRouter(tags=["dashboard"])
@@ -48,8 +59,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     )
     unread_count = unread_result.scalar() or 0
 
-    # Brand product counts
+    # Brand stats + retailer names
     brand_stats = {}
+    brand_retailers_map = {}
     for brand in brands:
         count_result = await session.execute(
             select(func.count(Product.id)).where(Product.brand_id == brand.id)
@@ -64,12 +76,22 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "retailer_count": retailer_count.scalar() or 0,
         }
 
+        # Fetch retailer names for badges
+        retailers_result = await session.execute(
+            select(Retailer.name)
+            .join(BrandRetailer, BrandRetailer.retailer_id == Retailer.id)
+            .where(BrandRetailer.brand_id == brand.id)
+            .order_by(Retailer.name)
+        )
+        brand_retailers_map[brand.id] = [r[0] for r in retailers_result.all()]
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
             "brands": brands,
             "brand_stats": brand_stats,
+            "brand_retailers_map": brand_retailers_map,
             "recent_drops": recent_drops,
             "unread_count": unread_count,
             "format_price": format_price,
@@ -97,6 +119,39 @@ async def brand_detail(
     )
     products = products_result.scalars().all()
 
+    # Linked retailers with stats
+    retailer_stats_q = (
+        select(
+            Retailer.id,
+            Retailer.name,
+            Retailer.slug,
+            Retailer.base_url,
+            Retailer.active,
+            BrandRetailer.brand_url,
+            BrandRetailer.verified,
+            func.count(Product.id).label("product_count"),
+            func.max(Product.last_checked).label("last_checked"),
+        )
+        .join(BrandRetailer, BrandRetailer.retailer_id == Retailer.id)
+        .outerjoin(
+            Product,
+            (Product.retailer_id == Retailer.id) & (Product.brand_id == brand_id),
+        )
+        .where(BrandRetailer.brand_id == brand_id)
+        .group_by(
+            Retailer.id,
+            Retailer.name,
+            Retailer.slug,
+            Retailer.base_url,
+            Retailer.active,
+            BrandRetailer.brand_url,
+            BrandRetailer.verified,
+        )
+        .order_by(Retailer.name)
+    )
+    retailer_stats_result = await session.execute(retailer_stats_q)
+    linked_retailers = retailer_stats_result.all()
+
     unread_result = await session.execute(
         select(func.count(Notification.id)).where(Notification.read.is_(False))
     )
@@ -108,6 +163,7 @@ async def brand_detail(
             "request": request,
             "brand": brand,
             "products": products,
+            "linked_retailers": linked_retailers,
             "aliases": json.loads(brand.aliases) if brand.aliases else [],
             "unread_count": unread_count,
             "format_price": format_price,
@@ -212,4 +268,142 @@ async def alerts_page(
             "brands": brands,
             "unread_count": unread_count,
         },
+    )
+
+
+# --- Suggest Retailer ---
+
+
+@router.get("/suggest-retailer")
+async def suggest_retailer_page(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    success: str = "",
+    error: str = "",
+):
+    suggestions_result = await session.execute(
+        select(RetailerSuggestion)
+        .order_by(RetailerSuggestion.created_at.desc())
+        .limit(50)
+    )
+    suggestions = suggestions_result.scalars().all()
+
+    # All existing retailers for reference
+    retailers_result = await session.execute(
+        select(Retailer).where(Retailer.active.is_(True)).order_by(Retailer.name)
+    )
+    retailers = retailers_result.scalars().all()
+
+    unread_result = await session.execute(
+        select(func.count(Notification.id)).where(Notification.read.is_(False))
+    )
+    unread_count = unread_result.scalar() or 0
+
+    # Map error codes to messages
+    error_messages = {
+        "invalid_url": "Invalid URL — must include https://",
+        "duplicate": "A retailer with this URL already exists.",
+        "slug_taken": "A retailer with this name already exists.",
+    }
+
+    return templates.TemplateResponse(
+        "suggest_retailer.html",
+        {
+            "request": request,
+            "suggestions": suggestions,
+            "retailers": retailers,
+            "unread_count": unread_count,
+            "success": bool(success),
+            "error_message": error_messages.get(error, ""),
+        },
+    )
+
+
+@router.post("/suggest-retailer")
+async def suggest_retailer_submit(
+    request: Request,
+    name: str = Form(...),
+    url: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Validate URL
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return RedirectResponse(
+            "/suggest-retailer?error=invalid_url", status_code=HTTP_303_SEE_OTHER
+        )
+
+    # Normalize URL
+    url = url.rstrip("/")
+    if url.startswith("http://"):
+        url = "https://" + url[7:]
+
+    # Check duplicate by base_url
+    existing = await session.execute(
+        select(Retailer).where(Retailer.base_url == url)
+    )
+    if existing.scalar_one_or_none():
+        return RedirectResponse(
+            "/suggest-retailer?error=duplicate", status_code=HTTP_303_SEE_OTHER
+        )
+
+    # Generate slug
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+    # Check slug uniqueness
+    existing_slug = await session.execute(
+        select(Retailer).where(Retailer.slug == slug)
+    )
+    if existing_slug.scalar_one_or_none():
+        return RedirectResponse(
+            "/suggest-retailer?error=slug_taken", status_code=HTTP_303_SEE_OTHER
+        )
+
+    # Create suggestion record
+    suggestion = RetailerSuggestion(name=name, url=url)
+    session.add(suggestion)
+    await session.flush()
+
+    # Run health check
+    health_ok = False
+    health_msg = ""
+    try:
+        from src.retailers.generic import GenericScraper
+
+        scraper = GenericScraper()
+        scraper.base_url = url
+        health_ok = await scraper.health_check()
+        health_msg = "URL reachable" if health_ok else "URL returned non-200 status"
+        await scraper.close()
+    except Exception as exc:
+        health_msg = f"Health check failed: {str(exc)[:200]}"
+
+    suggestion.health_check_ok = health_ok
+    suggestion.health_check_message = health_msg
+
+    # Auto-approve if health check passes
+    if health_ok:
+        retailer = Retailer(
+            name=name,
+            slug=slug,
+            base_url=url,
+            scraper_type="generic",
+            requires_js=False,
+        )
+        session.add(retailer)
+        await session.flush()
+        suggestion.status = "approved"
+        suggestion.retailer_id = retailer.id
+        logger.info(f"Retailer suggestion approved: {name} ({url})")
+    else:
+        suggestion.status = "failed"
+        logger.warning(f"Retailer suggestion failed health check: {name} ({url})")
+
+    await session.commit()
+
+    return RedirectResponse(
+        "/suggest-retailer?success=1", status_code=HTTP_303_SEE_OTHER
     )

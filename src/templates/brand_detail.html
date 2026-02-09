@@ -29,6 +29,47 @@
   </div>
 </div>
 
+<!-- Tracked Retailers -->
+<section class="mb-8">
+  <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-4">
+    Tracked Retailers ({{ linked_retailers | length }})
+  </h2>
+
+  {% if linked_retailers %}
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    {% for r in linked_retailers %}
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full {% if r.active %}bg-green-500{% else %}bg-neutral-600{% endif %}"></div>
+          <a href="{{ r.base_url }}" target="_blank" rel="noopener noreferrer"
+             class="text-sm font-medium text-white dark:text-white light:text-neutral-900 hover:text-green-500 transition-colors">
+            {{ r.name }}
+          </a>
+        </div>
+        {% if r.verified %}
+        <span class="text-[10px] font-medium text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded uppercase">Verified</span>
+        {% endif %}
+      </div>
+      <div class="flex items-center gap-4 text-xs text-neutral-500">
+        <span>{{ r.product_count }} product{{ 's' if r.product_count != 1 else '' }}</span>
+        {% if r.last_checked %}
+        <span>Checked {{ r.last_checked.strftime('%b %d, %H:%M') }}</span>
+        {% else %}
+        <span>Never checked</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-6 text-center">
+    <p class="text-neutral-500 text-sm">No retailers linked to this brand yet.</p>
+    <p class="text-neutral-600 text-xs mt-1">Retailers are linked when scrapers discover products, or you can <a href="/suggest-retailer" class="text-green-500 hover:text-green-400">suggest a new retailer</a>.</p>
+  </div>
+  {% endif %}
+</section>
+
 <!-- Products grid -->
 <section>
   <div class="flex items-center justify-between mb-4">

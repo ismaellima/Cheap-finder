@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Suggest Retailer — Cheap Finder{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-8">
+  <div>
+    <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Suggest a Retailer</h1>
+    <p class="text-sm text-neutral-500 mt-1">Add a new Canadian retailer to track. We'll verify the URL and start monitoring it.</p>
+  </div>
+</div>
+
+<!-- Success/Error messages -->
+{% if success %}
+<div class="bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 text-sm text-green-400 mb-6">
+  Retailer submitted and verified successfully! It's now available for tracking.
+</div>
+{% endif %}
+
+{% if error_message %}
+<div class="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-400 mb-6">
+  {{ error_message }}
+</div>
+{% endif %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+  <!-- Left: Suggestion form -->
+  <div class="lg:col-span-1">
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-xl p-6">
+      <h3 class="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-4">New Suggestion</h3>
+      <form method="POST" action="/suggest-retailer">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-neutral-400 mb-1.5">Retailer Name</label>
+            <input type="text" name="name" required
+                   class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors"
+                   placeholder="e.g. Little Burgundy">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-neutral-400 mb-1.5">Website URL</label>
+            <input type="url" name="url" required
+                   class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors"
+                   placeholder="https://www.littleburgundyshoes.com">
+          </div>
+        </div>
+        <p class="text-[11px] text-neutral-600 mt-3">We'll check if the URL is reachable. If it passes, the retailer will be added automatically using a generic scraper.</p>
+        <button type="submit"
+                class="w-full mt-4 bg-green-600 hover:bg-green-500 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-colors">
+          Submit &amp; Verify
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Right: Active retailers + suggestion history -->
+  <div class="lg:col-span-2 space-y-8">
+    <!-- Current Retailers -->
+    <section>
+      <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-4">
+        Active Retailers ({{ retailers | length }})
+      </h2>
+      {% if retailers %}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {% for r in retailers %}
+        <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-2 h-2 rounded-full bg-green-500"></div>
+            <div>
+              <p class="text-sm font-medium text-white dark:text-white light:text-neutral-900">{{ r.name }}</p>
+              <a href="{{ r.base_url }}" target="_blank" rel="noopener noreferrer"
+                 class="text-xs text-neutral-500 hover:text-green-500 transition-colors">{{ r.base_url }}</a>
+            </div>
+          </div>
+          <span class="text-[10px] text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-2 py-1 rounded">{{ r.scraper_type }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-neutral-500 text-sm">No retailers configured yet.</p>
+      {% endif %}
+    </section>
+
+    <!-- Suggestion History -->
+    <section>
+      <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-4">
+        Suggestion History ({{ suggestions | length }})
+      </h2>
+
+      {% if suggestions %}
+      <div class="space-y-3">
+        {% for s in suggestions %}
+        <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-2 h-2 rounded-full
+              {% if s.status == 'approved' %}bg-green-500
+              {% elif s.status == 'failed' %}bg-red-500
+              {% else %}bg-yellow-500{% endif %}"></div>
+            <div>
+              <p class="text-sm font-medium text-white dark:text-white light:text-neutral-900">{{ s.name }}</p>
+              <a href="{{ s.url }}" target="_blank" rel="noopener noreferrer"
+                 class="text-xs text-neutral-500 hover:text-green-500 transition-colors">{{ s.url }}</a>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 text-xs shrink-0">
+            {% if s.health_check_ok is not none %}
+            <span class="hidden sm:inline {% if s.health_check_ok %}text-green-400{% else %}text-red-400{% endif %}">
+              {{ s.health_check_message }}
+            </span>
+            {% endif %}
+            <span class="px-2 py-1 rounded capitalize
+              {% if s.status == 'approved' %}text-green-400 bg-green-500/10
+              {% elif s.status == 'failed' %}text-red-400 bg-red-500/10
+              {% else %}text-yellow-400 bg-yellow-500/10{% endif %}">
+              {{ s.status }}
+            </span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-8 text-center">
+        <p class="text-neutral-500 text-sm">No suggestions yet. Submit a retailer URL above to get started.</p>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

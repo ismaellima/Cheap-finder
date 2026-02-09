@@ -207,3 +207,22 @@ class Notification(Base):
     )
 
     alert_event: Mapped[AlertEvent] = relationship(back_populates="notifications")
+
+
+class RetailerSuggestion(Base):
+    __tablename__ = "retailer_suggestions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending"
+    )  # pending | approved | failed
+    health_check_ok: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    health_check_message: Mapped[str] = mapped_column(Text, default="")
+    retailer_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("retailers.id"), nullable=True
+    )  # set when approved and a Retailer is created
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=dt.datetime.utcnow
+    )
