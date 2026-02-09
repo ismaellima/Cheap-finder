@@ -24,6 +24,7 @@ dependencies = [
     "python-multipart>=0.0.6",
     "aiosmtplib>=2.0.0",
     "aiofiles>=23.0.0",
+    "itsdangerous>=2.0.0",
     "eval_type_backport>=0.2.0; python_version < '3.10'",
 ]
 

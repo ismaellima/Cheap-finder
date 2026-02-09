@@ -31,5 +31,9 @@ services:
         sync: false
       - key: RENDER_EXTERNAL_URL
         sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: SESSION_SECRET_KEY
+        sync: false
     healthCheckPath: /health
     autoDeploy: true

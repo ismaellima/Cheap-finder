@@ -8,11 +8,15 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.config import settings
 from src.db.models import Brand, BrandRetailer, Notification, Product
 from src.db.session import get_session
 
 router = APIRouter(tags=["dashboard"])
 templates = Jinja2Templates(directory="src/templates")
+
+# Make auth_enabled available in all templates (for logout button in nav)
+templates.env.globals["auth_enabled"] = bool(settings.DASHBOARD_PASSWORD)
 
 
 def format_price(cents: int | None) -> str:
