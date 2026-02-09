@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 from urllib.parse import urlparse
 
@@ -22,7 +24,9 @@ from src.db.models import (
     Retailer,
     RetailerSuggestion,
 )
-from src.db.session import get_session
+from src.db.session import async_session, get_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["dashboard"])
 templates = Jinja2Templates(directory="src/templates")
@@ -45,8 +49,9 @@ async def dashboard(
     error: str = "",
 ):
     success_messages = {
-        "brand_added": "Brand added successfully!",
+        "brand_added": "Brand added! Product discovery is running in the background.",
         "brand_deleted": "Brand deleted.",
+        "discovery_started": "Product discovery started in the background. Refresh in a few minutes to see results.",
     }
     error_messages = {
         "brand_empty_name": "Brand name cannot be empty.",
@@ -172,6 +177,10 @@ async def add_brand_submit(
     session.add(rule)
     await session.commit()
 
+    # Trigger background discovery for the new brand
+    brand_id = brand.id
+    asyncio.create_task(_discover_brand_background(brand_id))
+
     return RedirectResponse("/?success=brand_added", status_code=HTTP_303_SEE_OTHER)
 
 
@@ -191,9 +200,81 @@ async def delete_brand_submit(
     return RedirectResponse("/?success=brand_deleted", status_code=HTTP_303_SEE_OTHER)
 
 
+SKIP_SCRAPERS = {"simons", "ssense", "nordstrom"}
+
+
+def _get_working_scrapers() -> dict:
+    """Get scrapers excluding known-broken ones."""
+    from src.retailers import get_all_scrapers
+
+    scrapers = get_all_scrapers()
+    return {k: v for k, v in scrapers.items() if k not in SKIP_SCRAPERS}
+
+
+async def _discover_brand_background(brand_id: int) -> None:
+    """Run discovery for a single brand in the background."""
+    from src.brands.discovery import discover_single_brand
+
+    scrapers = _get_working_scrapers()
+    try:
+        async with async_session() as session:
+            brand = await session.get(Brand, brand_id)
+            if not brand:
+                return
+            stats = await discover_single_brand(session, brand, scrapers)
+            logger.info(
+                f"Background discovery for {brand.name}: "
+                f"{stats['new_products']} products found"
+            )
+    except Exception:
+        logger.exception(f"Background discovery failed for brand_id={brand_id}")
+    finally:
+        for s in scrapers.values():
+            await s.close()
+
+
+async def _discover_all_background() -> None:
+    """Run full discovery for all brands in the background."""
+    from src.brands.discovery import discover_and_store
+
+    scrapers = _get_working_scrapers()
+    try:
+        async with async_session() as session:
+            stats = await discover_and_store(session, scrapers)
+            logger.info(
+                f"Full discovery complete: {stats['new_products']} new products, "
+                f"{stats['mappings_created']} mappings"
+            )
+    except Exception:
+        logger.exception("Full background discovery failed")
+    finally:
+        for s in scrapers.values():
+            await s.close()
+
+
+@router.post("/discover")
+async def discover_all(request: Request):
+    """Trigger full product discovery for all brands."""
+    asyncio.create_task(_discover_all_background())
+    return RedirectResponse("/?success=discovery_started", status_code=HTTP_303_SEE_OTHER)
+
+
+@router.post("/brands/{brand_id}/discover")
+async def discover_brand(request: Request, brand_id: int):
+    """Trigger product discovery for a single brand."""
+    asyncio.create_task(_discover_brand_background(brand_id))
+    return RedirectResponse(
+        f"/brands/{brand_id}?success=discovery_started",
+        status_code=HTTP_303_SEE_OTHER,
+    )
+
+
 @router.get("/brands/{brand_id}")
 async def brand_detail(
-    request: Request, brand_id: int, session: AsyncSession = Depends(get_session)
+    request: Request,
+    brand_id: int,
+    session: AsyncSession = Depends(get_session),
+    success: str = "",
 ):
     brand = await session.get(Brand, brand_id)
     if not brand:
@@ -249,6 +330,10 @@ async def brand_detail(
     )
     unread_count = unread_result.scalar() or 0
 
+    brand_success_messages = {
+        "discovery_started": "Product discovery started in the background. Refresh in a few minutes to see results.",
+    }
+
     return templates.TemplateResponse(
         "brand_detail.html",
         {
@@ -259,6 +344,7 @@ async def brand_detail(
             "aliases": json.loads(brand.aliases) if brand.aliases else [],
             "unread_count": unread_count,
             "format_price": format_price,
+            "success_message": brand_success_messages.get(success, ""),
         },
     )
 

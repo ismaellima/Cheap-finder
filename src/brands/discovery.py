@@ -202,6 +202,44 @@ async def store_scraped_products(
     return new_count
 
 
+async def discover_single_brand(
+    session: AsyncSession,
+    brand: Brand,
+    scrapers: dict[str, RetailerBase],
+) -> dict[str, int]:
+    """Discover products for a single brand across all active retailers."""
+    retailers_result = await session.execute(
+        select(Retailer).where(Retailer.active.is_(True)).order_by(Retailer.name)
+    )
+    retailers = list(retailers_result.scalars().all())
+
+    stats = {"products_found": 0, "new_products": 0, "retailers_matched": 0}
+
+    for retailer in retailers:
+        scraper = scrapers.get(retailer.scraper_type)
+        if scraper is None:
+            continue
+
+        logger.info(f"Searching {retailer.name} for {brand.name}...")
+        scraped = await discover_brand_at_retailer(
+            session, brand, retailer, scraper
+        )
+
+        if scraped:
+            stats["products_found"] += len(scraped)
+            new = await store_scraped_products(
+                session, brand, retailer, scraped
+            )
+            stats["new_products"] += new
+            stats["retailers_matched"] += 1
+
+    logger.info(
+        f"Brand discovery for {brand.name}: {stats['new_products']} products "
+        f"across {stats['retailers_matched']} retailers"
+    )
+    return stats
+
+
 async def discover_and_store(
     session: AsyncSession,
     scrapers: dict[str, RetailerBase],
@@ -213,38 +251,19 @@ async def discover_and_store(
     )
     brands = list(brands_result.scalars().all())
 
-    retailers_result = await session.execute(
-        select(Retailer).where(Retailer.active.is_(True)).order_by(Retailer.name)
-    )
-    retailers = list(retailers_result.scalars().all())
-
     stats = {
         "brands_checked": len(brands),
-        "retailers_checked": len(retailers),
+        "retailers_checked": 0,
         "mappings_created": 0,
         "products_found": 0,
         "new_products": 0,
     }
 
     for brand in brands:
-        for retailer in retailers:
-            scraper = scrapers.get(retailer.scraper_type)
-            if scraper is None:
-                continue
-
-            logger.info(f"Searching {retailer.name} for {brand.name}...")
-            scraped = await discover_brand_at_retailer(
-                session, brand, retailer, scraper
-            )
-
-            if scraped:
-                stats["products_found"] += len(scraped)
-                new = await store_scraped_products(
-                    session, brand, retailer, scraped
-                )
-                stats["new_products"] += new
-                if new > 0:
-                    stats["mappings_created"] += 1
+        brand_stats = await discover_single_brand(session, brand, scrapers)
+        stats["products_found"] += brand_stats["products_found"]
+        stats["new_products"] += brand_stats["new_products"]
+        stats["mappings_created"] += brand_stats["retailers_matched"]
 
     logger.info(
         f"Discovery complete: {stats['new_products']} new products, "
