@@ -14,6 +14,7 @@ from starlette.status import HTTP_303_SEE_OTHER
 
 from src.config import settings
 from src.db.models import (
+    AlertRule,
     Brand,
     BrandRetailer,
     Notification,
@@ -37,7 +38,23 @@ def format_price(cents: int | None) -> str:
 
 
 @router.get("/")
-async def dashboard(request: Request, session: AsyncSession = Depends(get_session)):
+async def dashboard(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    success: str = "",
+    error: str = "",
+):
+    success_messages = {
+        "brand_added": "Brand added successfully!",
+        "brand_deleted": "Brand deleted.",
+    }
+    error_messages = {
+        "brand_empty_name": "Brand name cannot be empty.",
+        "brand_duplicate": "A brand with this name already exists.",
+        "brand_slug_taken": "A brand with a similar name already exists.",
+        "brand_not_found": "Brand not found.",
+    }
+
     brands_result = await session.execute(
         select(Brand).where(Brand.active.is_(True)).order_by(Brand.name)
     )
@@ -95,8 +112,83 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "recent_drops": recent_drops,
             "unread_count": unread_count,
             "format_price": format_price,
+            "success_message": success_messages.get(success, ""),
+            "error_message": error_messages.get(error, ""),
         },
     )
+
+
+# --- Add / Delete Brand ---
+
+
+@router.post("/add-brand")
+async def add_brand_submit(
+    request: Request,
+    name: str = Form(...),
+    category: str = Form(""),
+    alert_threshold_pct: float = Form(10.0),
+    session: AsyncSession = Depends(get_session),
+):
+    name = name.strip()
+    if not name:
+        return RedirectResponse("/?error=brand_empty_name", status_code=HTTP_303_SEE_OTHER)
+
+    # Generate slug
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+    # Check for duplicate name
+    existing_name = await session.execute(
+        select(Brand).where(Brand.name == name)
+    )
+    if existing_name.scalar_one_or_none():
+        return RedirectResponse("/?error=brand_duplicate", status_code=HTTP_303_SEE_OTHER)
+
+    # Check for duplicate slug
+    existing_slug = await session.execute(
+        select(Brand).where(Brand.slug == slug)
+    )
+    if existing_slug.scalar_one_or_none():
+        return RedirectResponse("/?error=brand_slug_taken", status_code=HTTP_303_SEE_OTHER)
+
+    # Create brand
+    brand = Brand(
+        name=name,
+        slug=slug,
+        aliases=json.dumps([]),
+        category=category.strip(),
+        alert_threshold_pct=alert_threshold_pct,
+    )
+    session.add(brand)
+    await session.flush()
+
+    # Create default alert rule
+    rule = AlertRule(
+        brand_id=brand.id,
+        condition="pct_drop",
+        threshold_pct=alert_threshold_pct,
+        notify_email=True,
+        notify_dashboard=True,
+    )
+    session.add(rule)
+    await session.commit()
+
+    return RedirectResponse("/?success=brand_added", status_code=HTTP_303_SEE_OTHER)
+
+
+@router.post("/brands/{brand_id}/delete")
+async def delete_brand_submit(
+    request: Request,
+    brand_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    brand = await session.get(Brand, brand_id)
+    if not brand:
+        return RedirectResponse("/?error=brand_not_found", status_code=HTTP_303_SEE_OTHER)
+
+    await session.delete(brand)
+    await session.commit()
+
+    return RedirectResponse("/?success=brand_deleted", status_code=HTTP_303_SEE_OTHER)
 
 
 @router.get("/brands/{brand_id}")
@@ -241,8 +333,6 @@ async def notifications_page(
 async def alerts_page(
     request: Request, session: AsyncSession = Depends(get_session)
 ):
-    from src.db.models import AlertRule
-
     rules_result = await session.execute(
         select(AlertRule)
         .options(selectinload(AlertRule.brand))

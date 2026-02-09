@@ -8,6 +8,18 @@
   <p class="text-sm text-neutral-500 mt-1">Track fashion brands across Canadian retailers</p>
 </div>
 
+<!-- Feedback banners -->
+{% if success_message %}
+<div class="bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 text-sm text-green-400 mb-6">
+  {{ success_message }}
+</div>
+{% endif %}
+{% if error_message %}
+<div class="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-400 mb-6">
+  {{ error_message }}
+</div>
+{% endif %}
+
 <!-- Brands Grid -->
 <section class="mb-12">
   <div class="flex items-center justify-between mb-4">
@@ -87,7 +99,7 @@
 <div id="add-brand-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
   <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-xl p-6 w-full max-w-md mx-4">
     <h3 class="text-lg font-semibold text-white dark:text-white light:text-neutral-900 mb-4">Add Brand</h3>
-    <form hx-post="/api/brands" hx-target="body" hx-swap="innerHTML">
+    <form method="POST" action="/add-brand">
       <div class="space-y-4">
         <div>
           <label class="block text-xs font-medium text-neutral-400 mb-1.5">Brand Name</label>
