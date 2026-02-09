@@ -252,6 +252,36 @@ async def _discover_all_background() -> None:
             await s.close()
 
 
+async def _discover_retailer_background(retailer_id: int) -> None:
+    """Run discovery for all brands at a single retailer in the background."""
+    from src.brands.discovery import discover_single_retailer
+    from src.retailers import get_all_scrapers
+
+    try:
+        async with async_session() as session:
+            retailer = await session.get(Retailer, retailer_id)
+            if not retailer:
+                return
+            all_scrapers = get_all_scrapers()
+            scraper = all_scrapers.get(retailer.scraper_type)
+            if not scraper:
+                return
+            try:
+                stats = await discover_single_retailer(session, retailer, scraper)
+                logger.info(
+                    f"Background retailer discovery for {retailer.name}: "
+                    f"{stats['new_products']} new products"
+                )
+            finally:
+                await scraper.close()
+                # Close any other scrapers that were instantiated
+                for s in all_scrapers.values():
+                    if s is not scraper:
+                        await s.close()
+    except Exception:
+        logger.exception(f"Background discovery failed for retailer_id={retailer_id}")
+
+
 @router.post("/discover")
 async def discover_all(request: Request):
     """Trigger full product discovery for all brands."""
@@ -579,6 +609,10 @@ async def suggest_retailer_submit(
         logger.warning(f"Retailer suggestion failed health check: {name} ({url})")
 
     await session.commit()
+
+    # Trigger background discovery for the new retailer
+    if health_ok:
+        asyncio.create_task(_discover_retailer_background(retailer.id))
 
     return RedirectResponse(
         "/suggest-retailer?success=1", status_code=HTTP_303_SEE_OTHER

@@ -240,6 +240,39 @@ async def discover_single_brand(
     return stats
 
 
+async def discover_single_retailer(
+    session: AsyncSession,
+    retailer: Retailer,
+    scraper: RetailerBase,
+) -> dict[str, int]:
+    """Discover products for all active brands at a single retailer."""
+    brands_result = await session.execute(
+        select(Brand).where(Brand.active.is_(True)).order_by(Brand.name)
+    )
+    brands = list(brands_result.scalars().all())
+
+    stats = {"brands_checked": len(brands), "products_found": 0, "new_products": 0}
+
+    for brand in brands:
+        logger.info(f"Searching {retailer.name} for {brand.name}...")
+        scraped = await discover_brand_at_retailer(
+            session, brand, retailer, scraper
+        )
+
+        if scraped:
+            stats["products_found"] += len(scraped)
+            new = await store_scraped_products(
+                session, brand, retailer, scraped
+            )
+            stats["new_products"] += new
+
+    logger.info(
+        f"Retailer discovery for {retailer.name}: {stats['new_products']} new products "
+        f"across {stats['brands_checked']} brands"
+    )
+    return stats
+
+
 async def discover_and_store(
     session: AsyncSession,
     scrapers: dict[str, RetailerBase],
