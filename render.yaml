@@ -3,7 +3,7 @@ services:
     name: cheap-finder
     runtime: python
     plan: free
-    buildCommand: pip install -e . && playwright install chromium --with-deps
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt && pip install -e . && playwright install chromium --with-deps
     startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
