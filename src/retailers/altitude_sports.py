@@ -1,9 +1,8 @@
 """Altitude Sports (altitude-sports.com) scraper.
 
-Platform: Custom React SPA. Product data is loaded via JavaScript.
-Brand pages: /c/{brand-slug}
-Since this is a SPA, we attempt to extract any server-side rendered data
-from the initial HTML, and fall back to Playwright if needed.
+Platform: Next.js SPA with Algolia search. Product data is embedded in
+__NEXT_DATA__ within serverState.initialResults (Algolia InstantSearch).
+Search endpoint: /search?query={brand}
 """
 from __future__ import annotations
 
@@ -21,50 +20,25 @@ class AltitudeSportsScraper(RetailerBase):
     name = "Altitude Sports"
     slug = "altitude_sports"
     base_url = "https://www.altitude-sports.com"
-    requires_js = True  # SPA — may need Playwright for full scraping
-
-    brand_slug_map = {
-        "on cloud": "on",
-        "on running": "on",
-        "new balance": "new-balance",
-        "arc'teryx": "arcteryx",
-        "arcteryx": "arcteryx",
-        "satisfy": "satisfy",
-        "satisfy running": "satisfy",
-        "a.p.c.": "apc",
-        "apc": "apc",
-        "sabre": "sabre",
-    }
-
-    def _brand_to_slug(self, brand_name: str) -> str:
-        lower = brand_name.lower()
-        for key, slug in self.brand_slug_map.items():
-            if key in lower or lower in key:
-                return slug
-        return re.sub(r"[^a-z0-9]+", "-", lower).strip("-")
+    requires_js = False  # __NEXT_DATA__ is in initial HTML
 
     async def search_brand(self, brand_name: str) -> list[ScrapedProduct]:
-        slug = self._brand_to_slug(brand_name)
-        url = f"{self.base_url}/c/{slug}"
+        search_url = (
+            f"{self.base_url}/search?query={urllib.parse.quote(brand_name)}"
+        )
 
         try:
-            html = await self._fetch(url)
+            html = await self._fetch(search_url)
         except Exception:
-            logger.warning(f"{self.name}: Failed to fetch brand page for '{brand_name}'")
+            logger.warning(
+                f"{self.name}: Failed to fetch search page for '{brand_name}'"
+            )
             return []
 
-        products = self._extract_from_html(html)
-
-        if not products:
-            # Try search endpoint
-            search_url = f"{self.base_url}/search?query={urllib.parse.quote(brand_name)}"
-            try:
-                html = await self._fetch(search_url)
-                products = self._extract_from_html(html)
-            except Exception:
-                logger.warning(f"{self.name}: Search also failed for '{brand_name}'")
-
-        logger.info(f"{self.name}: Found {len(products)} products for '{brand_name}'")
+        products = self._extract_from_next_data(html)
+        logger.info(
+            f"{self.name}: Found {len(products)} products for '{brand_name}'"
+        )
         return products
 
     async def get_price(self, product_url: str) -> ScrapedPrice | None:
@@ -90,10 +64,39 @@ class AltitudeSportsScraper(RetailerBase):
                         return ScrapedPrice(
                             price=price,
                             currency=offers.get("priceCurrency", "CAD"),
-                            available="InStock" in str(offers.get("availability", "")),
+                            available="InStock"
+                            in str(offers.get("availability", "")),
                         )
             except (json.JSONDecodeError, AttributeError):
                 continue
+
+        # Try __NEXT_DATA__ for product page
+        match = re.search(
+            r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', soup.text, re.DOTALL
+        )
+        if match:
+            try:
+                nd = json.loads(match.group(1))
+                pp = nd.get("props", {}).get("pageProps", {})
+                product_data = pp.get("product", {})
+                if product_data:
+                    price_obj = product_data.get("price", {}).get("CAD", {})
+                    cents_list = price_obj.get("centAmount", [])
+                    if cents_list:
+                        price = cents_list[0] if isinstance(cents_list, list) else cents_list
+                        orig_obj = product_data.get("original_price", {}).get("CAD", {})
+                        orig_cents = orig_obj.get("centAmount", [])
+                        orig = orig_cents[0] if orig_cents and isinstance(orig_cents, list) else None
+                        on_sale = orig is not None and orig > price
+                        return ScrapedPrice(
+                            price=price,
+                            original_price=orig if on_sale else None,
+                            on_sale=on_sale,
+                            currency="CAD",
+                            available=True,
+                        )
+            except (json.JSONDecodeError, KeyError, IndexError):
+                pass
 
         # Try meta tags
         meta = soup.find("meta", {"property": "product:price:amount"})
@@ -104,107 +107,92 @@ class AltitudeSportsScraper(RetailerBase):
 
         return None
 
-    def _extract_from_html(self, html: str) -> list[ScrapedProduct]:
-        """Try to extract product data from server-side rendered HTML or embedded JSON."""
-        products: list[ScrapedProduct] = []
-
-        # Look for embedded JSON data (React apps often embed initial state)
-        patterns = [
-            r'window\.__INITIAL_STATE__\s*=\s*(\{.+?\})\s*;?\s*</script>',
-            r'window\.__NEXT_DATA__\s*=\s*(\{.+?\})\s*;?\s*</script>',
-            r'"products"\s*:\s*(\[.+?\])',
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, html, re.DOTALL)
-            if match:
-                try:
-                    data = json.loads(match.group(1))
-                    if isinstance(data, list):
-                        for item in data:
-                            p = self._parse_product_data(item)
-                            if p:
-                                products.append(p)
-                    elif isinstance(data, dict):
-                        # Navigate through nested structures
-                        product_list = self._find_products_in_dict(data)
-                        for item in product_list:
-                            p = self._parse_product_data(item)
-                            if p:
-                                products.append(p)
-                except (json.JSONDecodeError, KeyError):
-                    continue
-
-        # Fallback: parse JSON-LD
-        if not products:
-            from bs4 import BeautifulSoup
-
-            soup = BeautifulSoup(html, "html.parser")
-            scripts = soup.find_all("script", {"type": "application/ld+json"})
-            for script in scripts:
-                try:
-                    data = json.loads(script.string)
-                    if isinstance(data, dict) and data.get("@type") == "ItemList":
-                        for entry in data.get("itemListElement", []):
-                            item = entry.get("item", entry)
-                            p = self._parse_product_data(item)
-                            if p:
-                                products.append(p)
-                except (json.JSONDecodeError, AttributeError):
-                    continue
-
-        return products
-
-    def _find_products_in_dict(self, data: dict, depth: int = 0) -> list[dict]:
-        """Recursively find product arrays in nested dict."""
-        if depth > 5:
+    def _extract_from_next_data(self, html: str) -> list[ScrapedProduct]:
+        """Extract products from __NEXT_DATA__ Algolia search results."""
+        match = re.search(
+            r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL
+        )
+        if not match:
             return []
 
-        products = []
-        for key, value in data.items():
-            if key in ("products", "items", "results") and isinstance(value, list):
-                return value
-            elif isinstance(value, dict):
-                found = self._find_products_in_dict(value, depth + 1)
-                if found:
-                    return found
+        try:
+            data = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            return []
+
+        page_props = data.get("props", {}).get("pageProps", {})
+        server_state = page_props.get("serverState", {})
+        initial_results = server_state.get("initialResults", {})
+
+        products: list[ScrapedProduct] = []
+
+        for key, value in initial_results.items():
+            if not isinstance(value, dict):
+                continue
+            results = value.get("results", [])
+            for result_group in results:
+                if not isinstance(result_group, dict):
+                    continue
+                for hit in result_group.get("hits", []):
+                    p = self._parse_algolia_hit(hit)
+                    if p:
+                        products.append(p)
 
         return products
 
-    def _parse_product_data(self, data: dict) -> ScrapedProduct | None:
-        name = data.get("name") or data.get("title", "")
-        if not name:
+    @staticmethod
+    def _extract_cents(price_obj) -> int | None:
+        """Extract price in cents from Altitude Sports price structure."""
+        if not isinstance(price_obj, dict):
+            return None
+        cad = price_obj.get("CAD", {})
+        if not isinstance(cad, dict):
+            return None
+        cents = cad.get("centAmount", [])
+        if isinstance(cents, list):
+            return cents[0] if cents else None
+        if isinstance(cents, (int, float)):
+            return int(cents)
+        return None
+
+    def _parse_algolia_hit(self, hit: dict) -> ScrapedProduct | None:
+        name = hit.get("name", "")
+        slug = hit.get("slug", "")
+        if not name or not slug:
             return None
 
-        url = data.get("url") or data.get("href", "")
-        slug = data.get("slug") or data.get("handle", "")
-        if slug and not url:
-            url = f"{self.base_url}/products/{slug}"
-        if url and not url.startswith("http"):
-            url = f"{self.base_url}{url}"
+        url = f"{self.base_url}/products/{slug}"
 
-        # Extract price
-        offers = data.get("offers", {})
-        if isinstance(offers, list):
-            offers = offers[0] if offers else {}
-
-        price = (
-            self.parse_price(str(offers.get("price", "")))
-            or self.parse_price(str(data.get("price", "")))
-            or self.parse_price(str(data.get("salePrice", "")))
-        )
-
+        # Price is stored as {"CAD": {"centAmount": [12999]}}
+        price = self._extract_cents(hit.get("price", {}))
         if price is None:
             return None
 
-        image = data.get("image", "") or data.get("imageUrl", "")
-        if isinstance(image, list):
-            image = image[0] if image else ""
+        # Original price
+        original_price = self._extract_cents(hit.get("original_price", {}))
+
+        on_sale = original_price is not None and original_price > price
+        discount = hit.get("discounted_percent", 0)
+        if isinstance(discount, list):
+            discount = discount[0] if discount else 0
+        if discount and isinstance(discount, (int, float)) and discount > 0:
+            on_sale = True
+
+        image_url = hit.get("image_url", "")
+        thumbnails = hit.get("thumbnails", {})
+        if isinstance(thumbnails, dict):
+            thumbnail_url = thumbnails.get("small", image_url)
+        elif isinstance(thumbnails, list) and thumbnails:
+            thumbnail_url = thumbnails[0] if isinstance(thumbnails[0], str) else image_url
+        else:
+            thumbnail_url = image_url
 
         return ScrapedProduct(
             name=name,
             url=url,
             price=price,
-            image_url=image,
-            thumbnail_url=image,
+            original_price=original_price if on_sale else None,
+            on_sale=on_sale,
+            image_url=image_url,
+            thumbnail_url=thumbnail_url,
         )

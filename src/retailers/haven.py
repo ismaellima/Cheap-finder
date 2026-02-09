@@ -21,18 +21,11 @@ class HavenScraper(RetailerBase):
     requires_js = False  # JSON-LD is in initial HTML
 
     brand_slug_map = {
-        "arc'teryx": "arc-teryx",
-        "arcteryx": "arc-teryx",
+        "arc'teryx": "arcteryx",
+        "arcteryx": "arcteryx",
         "new balance": "new-balance",
-        "on cloud": "on-running",
-        "on running": "on-running",
-        "a.p.c.": "a-p-c",
-        "apc": "a-p-c",
-        "satisfy": "satisfy-running",
-        "satisfy running": "satisfy-running",
-        "sabre paris": "sabre",
-        "sabre": "sabre",
-        "balmoral": "balmoral",
+        "satisfy": "satisfy",
+        "satisfy running": "satisfy",
     }
 
     def _brand_to_slug(self, brand_name: str) -> str:
@@ -162,13 +155,24 @@ class HavenScraper(RetailerBase):
             if "window.__remixContext" not in text:
                 continue
 
-            # Extract JSON from the script
-            match = re.search(r"window\.__remixContext\s*=\s*(\{.+\})\s*;?$", text, re.DOTALL)
+            # Extract JSON from the script using brace balancing
+            match = re.search(r"window\.__remixContext\s*=\s*(\{.*)", text, re.DOTALL)
             if not match:
                 continue
 
             try:
-                context = json.loads(match.group(1))
+                raw = match.group(1)
+                depth = 0
+                end = 0
+                for i, ch in enumerate(raw):
+                    if ch == "{":
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+                context = json.loads(raw[:end])
                 # Navigate to products in the loader data
                 loader_data = context.get("state", {}).get("loaderData", {})
                 for key, value in loader_data.items():
