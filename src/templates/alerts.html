@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Alert Rules — Cheap Finder{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-8">
+  <div>
+    <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Alert Rules</h1>
+    <p class="text-sm text-neutral-500 mt-1">Configure when to get notified about price drops</p>
+  </div>
+  <button onclick="document.getElementById('add-rule-modal').classList.remove('hidden')"
+          class="text-sm bg-green-600 hover:bg-green-500 text-white font-medium px-4 py-2 rounded-lg transition-colors">
+    Add Rule
+  </button>
+</div>
+
+<!-- Existing rules -->
+{% if rules %}
+<div class="space-y-3">
+  {% for rule in rules %}
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <!-- Status indicator -->
+      <div class="w-2 h-2 rounded-full {% if rule.active %}bg-green-500{% else %}bg-neutral-600{% endif %}"></div>
+
+      <div>
+        <p class="text-sm font-medium text-white dark:text-white light:text-neutral-900">
+          {% if rule.brand %}{{ rule.brand.name }}{% else %}All Brands{% endif %}
+        </p>
+        <p class="text-xs text-neutral-500 mt-0.5">
+          {% if rule.condition == 'pct_drop' %}
+            Alert when price drops {{ rule.threshold_pct | int }}% or more
+          {% elif rule.condition == 'any_sale' %}
+            Alert on any sale
+          {% elif rule.condition == 'absolute_drop' %}
+            Alert when price drops ${{ "%.2f" | format(rule.threshold_amount / 100) }} or more
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <!-- Notification channels -->
+      <div class="flex items-center gap-2 text-xs text-neutral-500">
+        {% if rule.notify_email %}
+        <span class="bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-2 py-1 rounded">Email</span>
+        {% endif %}
+        {% if rule.notify_dashboard %}
+        <span class="bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-2 py-1 rounded">Dashboard</span>
+        {% endif %}
+      </div>
+
+      <!-- Delete -->
+      <button hx-delete="/api/alerts/rules/{{ rule.id }}" hx-target="closest div" hx-swap="outerHTML"
+              class="text-neutral-600 hover:text-red-400 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-12 text-center">
+  <p class="text-neutral-500 text-sm">No alert rules yet. Add one to start getting notified.</p>
+</div>
+{% endif %}
+
+<!-- Add Rule Modal -->
+<div id="add-rule-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-xl p-6 w-full max-w-md mx-4">
+    <h3 class="text-lg font-semibold text-white dark:text-white light:text-neutral-900 mb-4">New Alert Rule</h3>
+    <form hx-post="/api/alerts/rules" hx-target="body" hx-swap="innerHTML">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Brand</label>
+          <select name="brand_id"
+                  class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors">
+            <option value="">All Brands</option>
+            {% for brand in brands %}
+            <option value="{{ brand.id }}">{{ brand.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Condition</label>
+          <select name="condition"
+                  class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors">
+            <option value="pct_drop">Percentage drop</option>
+            <option value="any_sale">Any sale</option>
+            <option value="absolute_drop">Absolute drop ($)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Threshold (%)</label>
+          <input type="number" name="threshold_pct" value="10" min="1" max="90"
+                 class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors">
+        </div>
+      </div>
+      <div class="flex items-center gap-3 mt-6">
+        <button type="submit"
+                class="flex-1 bg-green-600 hover:bg-green-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors">
+          Create Rule
+        </button>
+        <button type="button" onclick="document.getElementById('add-rule-modal').classList.add('hidden')"
+                class="flex-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-sm font-medium py-2 px-4 rounded-lg transition-colors">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Cheap Finder{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="mb-8">
+  <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Dashboard</h1>
+  <p class="text-sm text-neutral-500 mt-1">Track fashion brands across Canadian retailers</p>
+</div>
+
+<!-- Brands Grid -->
+<section class="mb-12">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider">Tracked Brands</h2>
+    <span class="text-xs text-neutral-600">{{ brands | length }} brands</span>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    {% for brand in brands %}
+    <a href="/brands/{{ brand.id }}" class="group block bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-5 hover:border-neutral-600 dark:hover:border-neutral-600 light:hover:border-neutral-400 transition-all duration-200">
+      <div class="flex items-start justify-between">
+        <div>
+          <h3 class="font-medium text-white dark:text-white light:text-neutral-900 group-hover:text-green-500 transition-colors">
+            {{ brand.name }}
+          </h3>
+          <p class="text-xs text-neutral-500 mt-1 capitalize">{{ brand.category }}</p>
+        </div>
+        {% if brand.alert_threshold_pct %}
+        <span class="text-xs text-neutral-600 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-2 py-1 rounded">
+          {{ brand.alert_threshold_pct | int }}% alert
+        </span>
+        {% endif %}
+      </div>
+
+      <div class="flex items-center gap-4 mt-4 text-xs text-neutral-500">
+        <span>{{ brand_stats[brand.id].product_count }} products</span>
+        <span>{{ brand_stats[brand.id].retailer_count }} retailers</span>
+      </div>
+    </a>
+    {% endfor %}
+
+    <!-- Add brand card -->
+    <button onclick="document.getElementById('add-brand-modal').classList.remove('hidden')"
+            class="block border-2 border-dashed border-neutral-800 dark:border-neutral-800 light:border-neutral-300 rounded-lg p-5 text-center text-neutral-600 hover:text-neutral-400 hover:border-neutral-600 transition-all duration-200">
+      <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"/>
+      </svg>
+      <span class="text-sm">Add Brand</span>
+    </button>
+  </div>
+</section>
+
+<!-- Recent Price Drops -->
+<section>
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider">Recent Price Drops</h2>
+  </div>
+
+  {% if recent_drops %}
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+    {% for product in recent_drops %}
+      {% include "components/product_card.html" %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-12 text-center">
+    <svg class="w-12 h-12 mx-auto mb-3 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/>
+    </svg>
+    <p class="text-neutral-500 text-sm">No price drops yet. Prices are checked daily.</p>
+  </div>
+  {% endif %}
+</section>
+
+<!-- Add Brand Modal -->
+<div id="add-brand-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-xl p-6 w-full max-w-md mx-4">
+    <h3 class="text-lg font-semibold text-white dark:text-white light:text-neutral-900 mb-4">Add Brand</h3>
+    <form hx-post="/api/brands" hx-target="body" hx-swap="innerHTML">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Brand Name</label>
+          <input type="text" name="name" required
+                 class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors"
+                 placeholder="e.g. Arc'teryx">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Category</label>
+          <input type="text" name="category"
+                 class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors"
+                 placeholder="e.g. outdoor, running, fashion">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Alert Threshold (%)</label>
+          <input type="number" name="alert_threshold_pct" value="10" min="1" max="90"
+                 class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors">
+        </div>
+      </div>
+      <div class="flex items-center gap-3 mt-6">
+        <button type="submit"
+                class="flex-1 bg-green-600 hover:bg-green-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors">
+          Add Brand
+        </button>
+        <button type="button" onclick="document.getElementById('add-brand-modal').classList.add('hidden')"
+                class="flex-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-sm font-medium py-2 px-4 rounded-lg transition-colors">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

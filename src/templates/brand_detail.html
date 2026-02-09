@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}{{ brand.name }} — Cheap Finder{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<div class="flex items-center gap-2 text-sm text-neutral-500 mb-6">
+  <a href="/" class="hover:text-white transition-colors">Dashboard</a>
+  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+  </svg>
+  <span class="text-neutral-300">{{ brand.name }}</span>
+</div>
+
+<!-- Brand header -->
+<div class="flex items-start justify-between mb-8">
+  <div>
+    <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">{{ brand.name }}</h1>
+    <div class="flex items-center gap-3 mt-2">
+      <span class="text-xs text-neutral-500 capitalize">{{ brand.category }}</span>
+      {% if aliases %}
+      <span class="text-xs text-neutral-600">Also: {{ aliases | join(', ') }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    <span class="text-xs text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-3 py-1.5 rounded-lg">
+      Alert at {{ brand.alert_threshold_pct | int }}% drop
+    </span>
+  </div>
+</div>
+
+<!-- Products grid -->
+<section>
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider">
+      Products ({{ products | length }})
+    </h2>
+
+    <!-- Gender filter -->
+    <div class="flex items-center gap-1 bg-neutral-900 dark:bg-neutral-900 light:bg-neutral-100 rounded-lg p-1">
+      <button onclick="filterGender('all')" data-gender-btn="all"
+              class="text-xs px-3 py-1.5 rounded-md transition-colors bg-neutral-700 text-white">
+        All
+      </button>
+      <button onclick="filterGender('men')" data-gender-btn="men"
+              class="text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white">
+        Men
+      </button>
+      <button onclick="filterGender('women')" data-gender-btn="women"
+              class="text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white">
+        Women
+      </button>
+      <button onclick="filterGender('unisex')" data-gender-btn="unisex"
+              class="text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white">
+        Unisex
+      </button>
+    </div>
+  </div>
+
+  {% if products %}
+  <div id="products-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    {% for product in products %}
+    <div data-gender="{{ product.gender or '' }}">
+      {% include "components/product_card.html" %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-12 text-center">
+    <svg class="w-12 h-12 mx-auto mb-3 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+    </svg>
+    <p class="text-neutral-500 text-sm mb-4">No products tracked yet for {{ brand.name }}.</p>
+    <p class="text-neutral-600 text-xs">Products are discovered when retailer scrapers run, or you can add them manually via the API.</p>
+  </div>
+  {% endif %}
+</section>
+
+<script>
+function filterGender(gender) {
+  const cards = document.querySelectorAll('#products-grid > div[data-gender]');
+  cards.forEach(card => {
+    if (gender === 'all' || card.dataset.gender === gender || card.dataset.gender === '') {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+
+  document.querySelectorAll('[data-gender-btn]').forEach(btn => {
+    if (btn.dataset.genderBtn === gender) {
+      btn.className = 'text-xs px-3 py-1.5 rounded-md transition-colors bg-neutral-700 text-white';
+    } else {
+      btn.className = 'text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white';
+    }
+  });
+}
+</script>
+{% endblock %}

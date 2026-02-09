@@ -1,0 +1,72 @@
+<!-- Product card component: pass product, format_price -->
+<a href="/products/{{ product.id }}" class="group block bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg overflow-hidden hover:border-neutral-600 dark:hover:border-neutral-600 light:hover:border-neutral-400 transition-all duration-200">
+  <!-- Image -->
+  <div class="aspect-square bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 overflow-hidden">
+    {% if product.thumbnail_url or product.image_url %}
+    <img
+      src="{{ product.thumbnail_url or product.image_url }}"
+      alt="{{ product.name }}"
+      loading="lazy"
+      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+    />
+    <div class="w-full h-full items-center justify-center text-neutral-600 hidden">
+      <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+      </svg>
+    </div>
+    {% else %}
+    <div class="w-full h-full flex items-center justify-center text-neutral-600">
+      <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+      </svg>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Info -->
+  <div class="p-4 space-y-2">
+    <!-- Brand + Retailer -->
+    <div class="flex items-center justify-between">
+      <span class="text-xs font-medium text-neutral-500 uppercase tracking-wider">
+        {{ product.brand.name if product.brand else '' }}
+      </span>
+      {% if product.retailer %}
+      <span class="text-xs text-neutral-600 dark:text-neutral-600 light:text-neutral-400">
+        {{ product.retailer.name }}
+      </span>
+      {% endif %}
+    </div>
+
+    <!-- Product name + gender badge -->
+    <div class="flex items-start justify-between gap-1">
+      <h3 class="text-sm text-neutral-200 dark:text-neutral-200 light:text-neutral-800 font-medium leading-tight line-clamp-2">
+        {{ product.name }}
+      </h3>
+      {% if product.gender %}
+      <span class="flex-shrink-0 text-[10px] font-medium uppercase px-1.5 py-0.5 rounded
+        {% if product.gender == 'men' %}text-blue-400 bg-blue-500/10
+        {% elif product.gender == 'women' %}text-pink-400 bg-pink-500/10
+        {% else %}text-neutral-400 bg-neutral-700{% endif %}">
+        {{ product.gender }}
+      </span>
+      {% endif %}
+    </div>
+
+    <!-- Price -->
+    <div class="flex items-center gap-2">
+      <span class="text-base font-semibold {% if product.on_sale %}text-green-500{% else %}text-white dark:text-white light:text-neutral-900{% endif %}">
+        {{ format_price(product.current_price) }}
+      </span>
+      {% if product.on_sale and product.original_price and product.original_price != product.current_price %}
+      <span class="text-sm text-neutral-500 line-through">
+        {{ format_price(product.original_price) }}
+      </span>
+      {% set discount = ((product.original_price - product.current_price) / product.original_price * 100) | int %}
+      <span class="text-xs font-medium text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">
+        -{{ discount }}%
+      </span>
+      {% endif %}
+    </div>
+  </div>
+</a>

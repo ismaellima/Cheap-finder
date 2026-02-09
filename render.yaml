@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: cheap-finder
+    runtime: python
+    plan: free
+    buildCommand: pip install -e . && playwright install chromium --with-deps
+    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./cheapfinder.db
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PRICE_CHECK_HOUR
+        value: "6"
+      - key: REQUEST_DELAY_SECONDS
+        value: "2"
+      - key: SAVE_HTML_SNAPSHOTS
+        value: "false"
+      # Set these in the Render dashboard (secrets):
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: ALERT_EMAIL_TO
+        sync: false
+      - key: RENDER_EXTERNAL_URL
+        sync: false
+    healthCheckPath: /health
+    autoDeploy: true

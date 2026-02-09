@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Notifications — Cheap Finder{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-8">
+  <div>
+    <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Notifications</h1>
+    <p class="text-sm text-neutral-500 mt-1">Price drop alerts and updates</p>
+  </div>
+  {% if notifications %}
+  <button hx-post="/api/alerts/notifications/read-all" hx-swap="none"
+          onclick="document.querySelectorAll('[data-unread]').forEach(el => el.removeAttribute('data-unread'))"
+          class="text-xs text-neutral-400 hover:text-white bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded-lg transition-colors">
+    Mark all read
+  </button>
+  {% endif %}
+</div>
+
+{% if notifications %}
+<div class="space-y-2">
+  {% for n in notifications %}
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4 flex items-start gap-4 {% if not n.read %}border-l-2 border-l-green-500{% endif %}"
+       {% if not n.read %}data-unread{% endif %}>
+    <!-- Icon -->
+    <div class="flex-shrink-0 mt-0.5">
+      <div class="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center">
+        <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="flex-1 min-w-0">
+      <p class="text-sm font-medium text-white dark:text-white light:text-neutral-900">{{ n.title }}</p>
+      <p class="text-sm text-neutral-400 mt-0.5">{{ n.message }}</p>
+      <p class="text-xs text-neutral-600 mt-2">{{ n.created_at.strftime('%B %d, %Y at %H:%M') }}</p>
+    </div>
+
+    <!-- Mark read -->
+    {% if not n.read %}
+    <button hx-post="/api/alerts/notifications/{{ n.id }}/read" hx-swap="none"
+            onclick="this.closest('[data-unread]').removeAttribute('data-unread')"
+            class="flex-shrink-0 text-xs text-neutral-500 hover:text-white transition-colors">
+      Mark read
+    </button>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-12 text-center">
+  <svg class="w-12 h-12 mx-auto mb-3 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+  </svg>
+  <p class="text-neutral-500 text-sm">No notifications yet. You'll see alerts here when prices drop.</p>
+</div>
+{% endif %}
+{% endblock %}

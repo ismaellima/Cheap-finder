@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(pyenv versions:*)",
+      "Bash(timeout 8 python:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(gh auth status:*)",
+      "Bash(brew install:*)",
+      "Bash(~/bin/gh auth status:*)",
+      "Bash(~/bin/gh auth login:*)",
+      "Bash(git -C /Users/ismael/Documents/Cheap_finder diff --stat)",
+      "Bash(git -C /Users/ismael/Documents/Cheap_finder status --short)",
+      "Bash(git -C /Users/ismael/Documents/Cheap_finder add:*)"
+    ]
+  }
+}
