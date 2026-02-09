@@ -200,6 +200,78 @@ async def delete_brand_submit(
     return RedirectResponse("/?success=brand_deleted", status_code=HTTP_303_SEE_OTHER)
 
 
+@router.post("/brands/{brand_id}/edit")
+async def edit_brand_submit(
+    request: Request,
+    brand_id: int,
+    name: str = Form(...),
+    aliases: str = Form(""),
+    category: str = Form(""),
+    alert_threshold_pct: float = Form(10.0),
+    session: AsyncSession = Depends(get_session),
+):
+    brand = await session.get(Brand, brand_id)
+    if not brand:
+        return RedirectResponse("/?error=brand_not_found", status_code=HTTP_303_SEE_OTHER)
+
+    name = name.strip()
+    if not name:
+        return RedirectResponse(
+            f"/brands/{brand_id}?error=brand_empty_name",
+            status_code=HTTP_303_SEE_OTHER,
+        )
+
+    # If name changed, check uniqueness and regenerate slug
+    if name != brand.name:
+        existing_name = await session.execute(
+            select(Brand).where(Brand.name == name, Brand.id != brand_id)
+        )
+        if existing_name.scalar_one_or_none():
+            return RedirectResponse(
+                f"/brands/{brand_id}?error=brand_duplicate",
+                status_code=HTTP_303_SEE_OTHER,
+            )
+
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        existing_slug = await session.execute(
+            select(Brand).where(Brand.slug == slug, Brand.id != brand_id)
+        )
+        if existing_slug.scalar_one_or_none():
+            return RedirectResponse(
+                f"/brands/{brand_id}?error=brand_slug_taken",
+                status_code=HTTP_303_SEE_OTHER,
+            )
+
+        brand.name = name
+        brand.slug = slug
+
+    # Parse aliases from comma-separated string
+    alias_list = [a.strip() for a in aliases.split(",") if a.strip()]
+    brand.aliases = json.dumps(alias_list)
+
+    brand.category = category.strip()
+    brand.alert_threshold_pct = alert_threshold_pct
+
+    # Update linked alert rule threshold
+    rule_result = await session.execute(
+        select(AlertRule).where(
+            AlertRule.brand_id == brand_id,
+            AlertRule.condition == "pct_drop",
+        )
+    )
+    alert_rule = rule_result.scalar_one_or_none()
+    if alert_rule:
+        alert_rule.threshold_pct = alert_threshold_pct
+
+    await session.commit()
+    logger.info(f"Brand updated: {brand.name} (id={brand_id})")
+
+    return RedirectResponse(
+        f"/brands/{brand_id}?success=brand_updated",
+        status_code=HTTP_303_SEE_OTHER,
+    )
+
+
 SKIP_SCRAPERS = {"simons", "ssense", "nordstrom"}
 
 
@@ -305,6 +377,7 @@ async def brand_detail(
     brand_id: int,
     session: AsyncSession = Depends(get_session),
     success: str = "",
+    error: str = "",
 ):
     brand = await session.get(Brand, brand_id)
     if not brand:
@@ -362,6 +435,12 @@ async def brand_detail(
 
     brand_success_messages = {
         "discovery_started": "Product discovery started in the background. Refresh in a few minutes to see results.",
+        "brand_updated": "Brand updated successfully.",
+    }
+    brand_error_messages = {
+        "brand_empty_name": "Brand name cannot be empty.",
+        "brand_duplicate": "A brand with this name already exists.",
+        "brand_slug_taken": "A brand with a similar name already exists.",
     }
 
     return templates.TemplateResponse(
@@ -375,6 +454,7 @@ async def brand_detail(
             "unread_count": unread_count,
             "format_price": format_price,
             "success_message": brand_success_messages.get(success, ""),
+            "error_message": brand_error_messages.get(error, ""),
         },
     )
 
