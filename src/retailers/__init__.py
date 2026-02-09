@@ -12,7 +12,7 @@ from src.retailers.ssense import SSENSEScraper
 from src.retailers.altitude_sports import AltitudeSportsScraper
 from src.retailers.sporting_life import SportingLifeScraper
 from src.retailers.nordstrom import NordstromScraper
-from src.retailers.hip_store import HipStoreScraper
+
 
 
 def get_scraper_classes() -> Dict[str, Type[RetailerBase]]:
@@ -26,7 +26,6 @@ def get_scraper_classes() -> Dict[str, Type[RetailerBase]]:
         "altitude_sports": AltitudeSportsScraper,
         "sporting_life": SportingLifeScraper,
         "nordstrom": NordstromScraper,
-        "hip_store": HipStoreScraper,
         "generic": GenericScraper,
     }
 

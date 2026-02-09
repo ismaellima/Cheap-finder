@@ -112,13 +112,6 @@ INITIAL_RETAILERS = [
         "scraper_type": "nrml",
         "requires_js": False,
     },
-    {
-        "name": "The Hip Store",
-        "slug": "hip-store",
-        "base_url": "https://www.thehipstore.co.uk",
-        "scraper_type": "hip_store",
-        "requires_js": False,
-    },
 ]
 
 

@@ -57,7 +57,6 @@ Cheap_finder/
 │   │   ├── haven.py
 │   │   ├── livestock.py
 │   │   ├── nrml.py
-│   │   ├── hip_store.py
 │   │   └── generic.py       # fallback scraper for simpler sites
 │   ├── tracking/
 │   │   ├── __init__.py
@@ -128,7 +127,6 @@ Cheap_finder/
 | Haven | havenshop.com | |
 | Livestock | deadstock.ca | |
 | NRML | nrml.ca | |
-| The Hip Store | thehipstore.co.uk | ships to CA |
 | Brand direct sites | *.ca or regional | per-brand |
 
 ## Commands
