@@ -97,36 +97,56 @@
 
 <!-- Products grid -->
 <section>
-  <div class="flex items-center justify-between mb-4">
+  <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
     <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider">
-      Products ({{ products | length }})
+      Products (<span id="visible-count">{{ products | length }}</span>)
     </h2>
 
-    <!-- Gender filter -->
-    <div class="flex items-center gap-1 bg-neutral-900 dark:bg-neutral-900 light:bg-neutral-100 rounded-lg p-1">
-      <button onclick="filterGender('all')" data-gender-btn="all"
-              class="text-xs px-3 py-1.5 rounded-md transition-colors bg-neutral-700 text-white">
-        All
-      </button>
-      <button onclick="filterGender('men')" data-gender-btn="men"
-              class="text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white">
-        Men
-      </button>
-      <button onclick="filterGender('women')" data-gender-btn="women"
-              class="text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white">
-        Women
-      </button>
-      <button onclick="filterGender('unisex')" data-gender-btn="unisex"
-              class="text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white">
-        Unisex
-      </button>
+    <div class="flex items-center gap-3">
+      <!-- Search -->
+      <div class="relative">
+        <svg class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <input type="text" id="product-search" placeholder="Search products..."
+               class="w-48 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white dark:text-white light:text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-green-500 transition-colors">
+      </div>
+
+      <!-- Sort -->
+      <select id="product-sort" onchange="sortProducts(this.value)"
+              class="bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors cursor-pointer">
+        <option value="price-asc">Price: Low to High</option>
+        <option value="price-desc">Price: High to Low</option>
+        <option value="name-asc">Name: A to Z</option>
+        <option value="name-desc">Name: Z to A</option>
+      </select>
+
+      <!-- Gender filter -->
+      <div class="flex items-center gap-1 bg-neutral-900 dark:bg-neutral-900 light:bg-neutral-100 rounded-lg p-1">
+        <button onclick="setGender('all')" data-gender-btn="all"
+                class="text-xs px-3 py-1.5 rounded-md transition-colors bg-neutral-700 text-white">
+          All
+        </button>
+        <button onclick="setGender('men')" data-gender-btn="men"
+                class="text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white">
+          Men
+        </button>
+        <button onclick="setGender('women')" data-gender-btn="women"
+                class="text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white">
+          Women
+        </button>
+        <button onclick="setGender('unisex')" data-gender-btn="unisex"
+                class="text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white">
+          Unisex
+        </button>
+      </div>
     </div>
   </div>
 
   {% if products %}
   <div id="products-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
     {% for product in products %}
-    <div data-gender="{{ product.gender or '' }}">
+    <div data-gender="{{ product.gender or '' }}" data-name="{{ product.name | lower }}" data-price="{{ product.current_price or 0 }}">
       {% include "components/product_card.html" %}
     </div>
     {% endfor %}
@@ -143,15 +163,30 @@
 </section>
 
 <script>
-function filterGender(gender) {
-  const cards = document.querySelectorAll('#products-grid > div[data-gender]');
+let currentGender = 'all';
+
+function applyFilters() {
+  const query = (document.getElementById('product-search').value || '').toLowerCase();
+  const cards = document.querySelectorAll('#products-grid > div[data-name]');
+  let visible = 0;
+
   cards.forEach(card => {
-    if (gender === 'all' || card.dataset.gender === gender || card.dataset.gender === '') {
+    const matchesGender = currentGender === 'all' || card.dataset.gender === currentGender || card.dataset.gender === '';
+    const matchesSearch = !query || card.dataset.name.includes(query);
+
+    if (matchesGender && matchesSearch) {
       card.style.display = '';
+      visible++;
     } else {
       card.style.display = 'none';
     }
   });
+
+  document.getElementById('visible-count').textContent = visible;
+}
+
+function setGender(gender) {
+  currentGender = gender;
 
   document.querySelectorAll('[data-gender-btn]').forEach(btn => {
     if (btn.dataset.genderBtn === gender) {
@@ -160,6 +195,26 @@ function filterGender(gender) {
       btn.className = 'text-xs px-3 py-1.5 rounded-md transition-colors text-neutral-400 hover:text-white';
     }
   });
+
+  applyFilters();
 }
+
+function sortProducts(mode) {
+  const grid = document.getElementById('products-grid');
+  if (!grid) return;
+  const cards = Array.from(grid.children);
+
+  cards.sort((a, b) => {
+    if (mode === 'price-asc') return (parseInt(a.dataset.price) || 0) - (parseInt(b.dataset.price) || 0);
+    if (mode === 'price-desc') return (parseInt(b.dataset.price) || 0) - (parseInt(a.dataset.price) || 0);
+    if (mode === 'name-asc') return (a.dataset.name || '').localeCompare(b.dataset.name || '');
+    if (mode === 'name-desc') return (b.dataset.name || '').localeCompare(a.dataset.name || '');
+    return 0;
+  });
+
+  cards.forEach(card => grid.appendChild(card));
+}
+
+document.getElementById('product-search').addEventListener('input', applyFilters);
 </script>
 {% endblock %}

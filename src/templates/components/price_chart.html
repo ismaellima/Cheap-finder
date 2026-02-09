@@ -9,7 +9,9 @@
       <span>Avg: <span class="text-neutral-300 font-medium">${{ "%.2f" | format(trend.average_price / 100) }}</span></span>
     </div>
   </div>
-  <canvas id="{{ element_id }}" height="200"></canvas>
+  <div class="relative" style="height: 250px;">
+    <canvas id="{{ element_id }}"></canvas>
+  </div>
 </div>
 
 <script>
