@@ -12,33 +12,9 @@ logger = logging.getLogger(__name__)
 
 INITIAL_BRANDS = [
     {
-        "name": "On Cloud",
-        "slug": "on-cloud",
-        "aliases": json.dumps(["On Running", "On"]),
-        "category": "running",
-    },
-    {
-        "name": "Satisfy Running",
-        "slug": "satisfy-running",
-        "aliases": json.dumps(["Satisfy"]),
-        "category": "running",
-    },
-    {
         "name": "APFR",
         "slug": "apfr",
         "aliases": json.dumps(["A.P.C.", "A.P.C", "APC"]),
-        "category": "fashion",
-    },
-    {
-        "name": "New Balance",
-        "slug": "new-balance",
-        "aliases": json.dumps(["NB", "New Balance Made in USA", "New Balance Made in UK"]),
-        "category": "sneakers",
-    },
-    {
-        "name": "Balmoral",
-        "slug": "balmoral",
-        "aliases": json.dumps([]),
         "category": "fashion",
     },
     {
@@ -47,42 +23,96 @@ INITIAL_BRANDS = [
         "aliases": json.dumps(["Arcteryx", "Arc'teryx"]),
         "category": "outdoor",
     },
+    {
+        "name": "Balmoral",
+        "slug": "balmoral",
+        "aliases": json.dumps([]),
+        "category": "fashion",
+    },
+    {
+        "name": "Beams Plus",
+        "slug": "beams-plus",
+        "aliases": json.dumps([]),
+        "category": "fashion",
+    },
+    {
+        "name": "District Vision",
+        "slug": "district-vision",
+        "aliases": json.dumps([]),
+        "category": "outdoor",
+    },
+    {
+        "name": "Goldwin",
+        "slug": "goldwin",
+        "aliases": json.dumps([]),
+        "category": "fashion",
+    },
+    {
+        "name": "Koumori",
+        "slug": "koumori",
+        "aliases": json.dumps([]),
+        "category": "running",
+    },
+    {
+        "name": "New Balance",
+        "slug": "new-balance",
+        "aliases": json.dumps(["NB", "New Balance Made in USA", "New Balance Made in UK"]),
+        "category": "sneakers",
+    },
+    {
+        "name": "On Cloud",
+        "slug": "on-cloud",
+        "aliases": json.dumps(["On Running", "On"]),
+        "category": "running",
+    },
+    {
+        "name": "Patagonia",
+        "slug": "patagonia",
+        "aliases": json.dumps([]),
+        "category": "outdoor",
+    },
+    {
+        "name": "Satisfy Running",
+        "slug": "satisfy-running",
+        "aliases": json.dumps(["Satisfy"]),
+        "category": "running",
+    },
 ]
 
 INITIAL_RETAILERS = [
-    {
-        "name": "Simons",
-        "slug": "simons",
-        "base_url": "https://www.simons.ca",
-        "scraper_type": "simons",
-        "requires_js": False,
-    },
-    {
-        "name": "SSENSE",
-        "slug": "ssense",
-        "base_url": "https://www.ssense.com",
-        "scraper_type": "ssense",
-        "requires_js": True,
-    },
-    {
-        "name": "Nordstrom",
-        "slug": "nordstrom",
-        "base_url": "https://www.nordstrom.ca",
-        "scraper_type": "nordstrom",
-        "requires_js": False,
-    },
-    {
-        "name": "Sporting Life",
-        "slug": "sporting-life",
-        "base_url": "https://www.sportinglife.ca",
-        "scraper_type": "sporting_life",
-        "requires_js": False,
-    },
     {
         "name": "Altitude Sports",
         "slug": "altitude-sports",
         "base_url": "https://www.altitude-sports.com",
         "scraper_type": "altitude_sports",
+        "requires_js": False,
+    },
+    {
+        "name": "Annmz",
+        "slug": "annmz",
+        "base_url": "https://www.annmsshop.com",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
+        "name": "Capsule Toronto",
+        "slug": "capsule-toronto",
+        "base_url": "https://www.capsuletoronto.com",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
+        "name": "Empire",
+        "slug": "empire",
+        "base_url": "https://www.thinkempire.com",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
+        "name": "En route run",
+        "slug": "en-route-run",
+        "base_url": "https://www.enroute.run",
+        "scraper_type": "generic",
         "requires_js": False,
     },
     {
@@ -93,10 +123,31 @@ INITIAL_RETAILERS = [
         "requires_js": False,
     },
     {
+        "name": "Le club",
+        "slug": "le-club",
+        "base_url": "https://leclub.cc",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
         "name": "Livestock",
         "slug": "livestock",
         "base_url": "https://www.deadstock.ca",
         "scraper_type": "livestock",
+        "requires_js": False,
+    },
+    {
+        "name": "Lopez",
+        "slug": "lopez",
+        "base_url": "https://www.lopezmtl.ca",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
+        "name": "Muddy George",
+        "slug": "muddy-george",
+        "base_url": "https://muddygeorge.com",
+        "scraper_type": "generic",
         "requires_js": False,
     },
     {
@@ -106,37 +157,86 @@ INITIAL_RETAILERS = [
         "scraper_type": "nrml",
         "requires_js": False,
     },
+    {
+        "name": "Nordstrom",
+        "slug": "nordstrom",
+        "base_url": "https://www.nordstrom.ca",
+        "scraper_type": "nordstrom",
+        "requires_js": False,
+    },
+    {
+        "name": "SSENSE",
+        "slug": "ssense",
+        "base_url": "https://www.ssense.com",
+        "scraper_type": "ssense",
+        "requires_js": True,
+    },
+    {
+        "name": "Simons",
+        "slug": "simons",
+        "base_url": "https://www.simons.ca",
+        "scraper_type": "simons",
+        "requires_js": False,
+    },
+    {
+        "name": "Sporting Life",
+        "slug": "sporting-life",
+        "base_url": "https://www.sportinglife.ca",
+        "scraper_type": "sporting_life",
+        "requires_js": False,
+    },
+    {
+        "name": "Wallace",
+        "slug": "wallace",
+        "base_url": "https://wallacemercantileshop.com",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
 ]
 
 
 async def seed_brands(session: AsyncSession) -> None:
-    """Seed initial brands only if no brands exist yet (first-ever startup)."""
-    from sqlalchemy import func
+    """Upsert seed brands — add missing ones by slug, never delete existing.
 
-    count = await session.execute(select(func.count(Brand.id)))
-    if (count.scalar() or 0) > 0:
-        logger.info("Brands already exist — skipping seed")
-        return
-
+    This ensures all expected brands exist after a DB wipe (Render free tier)
+    while preserving any brands added via the UI that aren't in this list.
+    """
+    added = 0
     for brand_data in INITIAL_BRANDS:
-        session.add(Brand(**brand_data))
-        logger.info(f"Seeded brand: {brand_data['name']}")
-    await session.commit()
+        existing = await session.execute(
+            select(Brand).where(Brand.slug == brand_data["slug"])
+        )
+        if existing.scalar_one_or_none() is None:
+            session.add(Brand(**brand_data))
+            logger.info(f"Seeded brand: {brand_data['name']}")
+            added += 1
+    if added:
+        await session.commit()
+        logger.info(f"Seeded {added} new brands")
+    else:
+        logger.info("All seed brands already exist — nothing to add")
 
 
 async def seed_retailers(session: AsyncSession) -> None:
-    """Seed initial retailers only if no retailers exist yet (first-ever startup)."""
-    from sqlalchemy import func
+    """Upsert seed retailers — add missing ones by slug, never delete existing.
 
-    count = await session.execute(select(func.count(Retailer.id)))
-    if (count.scalar() or 0) > 0:
-        logger.info("Retailers already exist — skipping seed")
-        return
-
+    This ensures all expected retailers exist after a DB wipe (Render free tier)
+    while preserving any retailers added via the UI that aren't in this list.
+    """
+    added = 0
     for retailer_data in INITIAL_RETAILERS:
-        session.add(Retailer(**retailer_data))
-        logger.info(f"Seeded retailer: {retailer_data['name']}")
-    await session.commit()
+        existing = await session.execute(
+            select(Retailer).where(Retailer.slug == retailer_data["slug"])
+        )
+        if existing.scalar_one_or_none() is None:
+            session.add(Retailer(**retailer_data))
+            logger.info(f"Seeded retailer: {retailer_data['name']}")
+            added += 1
+    if added:
+        await session.commit()
+        logger.info(f"Seeded {added} new retailers")
+    else:
+        logger.info("All seed retailers already exist — nothing to add")
 
 
 async def seed_all(session: AsyncSession) -> None:
