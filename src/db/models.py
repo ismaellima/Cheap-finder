@@ -105,6 +105,7 @@ class Product(Base):
     thumbnail_url: Mapped[str] = mapped_column(String(1000), default="")
     sku: Mapped[str] = mapped_column(String(200), default="")
     gender: Mapped[str] = mapped_column(String(20), default="")  # men, women, unisex, or empty
+    sizes: Mapped[str] = mapped_column(Text, default="")  # JSON list e.g. ["S","M","L"]
     current_price: Mapped[int] = mapped_column(Integer, nullable=True)  # cents CAD
     original_price: Mapped[int] = mapped_column(Integer, nullable=True)  # cents CAD
     on_sale: Mapped[bool] = mapped_column(Boolean, default=False)

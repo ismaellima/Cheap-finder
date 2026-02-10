@@ -35,6 +35,19 @@ templates = Jinja2Templates(directory="src/templates")
 templates.env.globals["auth_enabled"] = bool(settings.DASHBOARD_PASSWORD)
 
 
+def _from_json(value: str) -> list:
+    """Jinja2 filter: parse a JSON string into a Python list."""
+    if not value:
+        return []
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+templates.env.filters["from_json"] = _from_json
+
+
 def format_price(cents: int | None) -> str:
     if cents is None:
         return "N/A"
@@ -587,6 +600,21 @@ async def suggest_retailer_page(
             select(func.count(Product.id)).where(Product.retailer_id == r.id)
         )
         retailer_product_counts[r.id] = count_result.scalar() or 0
+
+    # Sort retailers: green (working) first, yellow (pending) second, red (skipped) last
+    # Within each group, sort alphabetically
+    def _retailer_sort_key(r: Retailer) -> tuple:
+        is_skipped = r.scraper_type in SKIP_SCRAPERS
+        product_count = retailer_product_counts.get(r.id, 0)
+        if is_skipped:
+            group = 2  # red — last
+        elif product_count > 0:
+            group = 0  # green — first
+        else:
+            group = 1  # yellow — middle
+        return (group, r.name.lower())
+
+    retailers = sorted(retailers, key=_retailer_sort_key)
 
     unread_result = await session.execute(
         select(func.count(Notification.id)).where(Notification.read.is_(False))

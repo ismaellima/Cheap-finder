@@ -134,8 +134,8 @@
         <option value="name-desc">Name: Z to A</option>
       </select>
 
-      <!-- Gender filter -->
-      <div class="flex items-center gap-1 bg-neutral-900 dark:bg-neutral-900 light:bg-neutral-100 rounded-lg p-1">
+      <!-- Gender filter (hidden if no products have gender data) -->
+      <div id="gender-filter" class="hidden flex items-center gap-1 bg-neutral-900 dark:bg-neutral-900 light:bg-neutral-100 rounded-lg p-1">
         <button onclick="setGender('all')" data-gender-btn="all"
                 class="text-xs px-3 py-1.5 rounded-md transition-colors bg-neutral-700 text-white">
           All
@@ -184,7 +184,7 @@ function applyFilters() {
   let visible = 0;
 
   cards.forEach(card => {
-    const matchesGender = currentGender === 'all' || card.dataset.gender === currentGender || card.dataset.gender === '';
+    const matchesGender = currentGender === 'all' || card.dataset.gender === currentGender;
     const matchesSearch = !query || card.dataset.name.includes(query);
 
     if (matchesGender && matchesSearch) {
@@ -229,6 +229,15 @@ function sortProducts(mode) {
 }
 
 document.getElementById('product-search').addEventListener('input', applyFilters);
+
+// Show gender filter only if at least one product has gender data
+(function() {
+  const cards = document.querySelectorAll('#products-grid > div[data-name]');
+  const hasGender = Array.from(cards).some(c => c.dataset.gender && c.dataset.gender !== '');
+  if (hasGender) {
+    document.getElementById('gender-filter').classList.remove('hidden');
+  }
+})();
 </script>
 
 <!-- Edit Brand Modal -->

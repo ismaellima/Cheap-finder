@@ -68,5 +68,16 @@
       </span>
       {% endif %}
     </div>
+
+    <!-- Sizes -->
+    {% if product.sizes %}
+    <div class="flex flex-wrap gap-1 mt-1">
+      {% for size in (product.sizes | from_json) %}
+      <span class="text-[10px] text-neutral-400 dark:text-neutral-400 light:text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-1.5 py-0.5 rounded">
+        {{ size }}
+      </span>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 </a>

@@ -171,6 +171,8 @@ async def store_scraped_products(
                 product.thumbnail_url = sp.thumbnail_url
             if sp.gender:
                 product.gender = sp.gender
+            if sp.sizes:
+                product.sizes = sp.sizes
         else:
             # Create new product
             product = Product(
@@ -182,6 +184,7 @@ async def store_scraped_products(
                 thumbnail_url=sp.thumbnail_url or "",
                 sku=sp.sku or "",
                 gender=sp.gender or "",
+                sizes=sp.sizes or "",
                 current_price=sp.price,
                 original_price=sp.original_price,
                 on_sale=sp.on_sale,

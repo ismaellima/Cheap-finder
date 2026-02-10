@@ -33,6 +33,7 @@ class ScrapedProduct:
     thumbnail_url: str = ""
     sku: str = ""
     gender: str = ""  # men, women, unisex, or empty
+    sizes: str = ""  # JSON list e.g. '["S","M","L"]'
     brand: str = ""  # brand/vendor name from retailer (used for filtering)
 
 

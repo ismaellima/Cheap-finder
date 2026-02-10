@@ -8,6 +8,7 @@ Uses Shopify's JSON API endpoints:
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 
@@ -145,6 +146,9 @@ class ShopifyBase(RetailerBase):
             tags = [t.strip() for t in tags.split(",")]
         gender = self._detect_gender(tags, title, product.get("product_type", ""))
 
+        # Extract sizes from variants
+        sizes = self._extract_sizes(variants, product.get("options", []))
+
         return ScrapedProduct(
             name=title,
             url=f"{self.base_url}/products/{handle}",
@@ -155,6 +159,7 @@ class ShopifyBase(RetailerBase):
             thumbnail_url=thumbnail_url,
             sku=str(variant.get("sku", "")),
             gender=gender,
+            sizes=json.dumps(sizes) if sizes else "",
             brand=product.get("vendor", ""),
         )
 
@@ -186,6 +191,64 @@ class ShopifyBase(RetailerBase):
             thumbnail_url=image,
             brand=product.get("vendor", ""),
         )
+
+    @staticmethod
+    def _extract_sizes(variants: list[dict], options: list[dict]) -> list[str]:
+        """Extract available sizes from Shopify variants.
+
+        Shopify products have "options" (e.g. [{"name": "Size", "values": ["S","M","L"]}])
+        and variants with option1/option2/option3 values plus availability.
+        We extract sizes from the Size option, only including available variants.
+        """
+        # Find which option index is "Size"
+        size_option_idx = None
+        for i, opt in enumerate(options):
+            opt_name = (opt.get("name") or "").lower()
+            if opt_name in ("size", "taille", "pointure"):
+                size_option_idx = i + 1  # option1, option2, option3
+                break
+
+        if size_option_idx is not None:
+            # Extract sizes from available variants using the right option index
+            option_key = f"option{size_option_idx}"
+            sizes = []
+            seen = set()
+            for v in variants:
+                if v.get("available", True):
+                    size_val = v.get(option_key, "")
+                    if size_val and size_val not in seen:
+                        sizes.append(size_val)
+                        seen.add(size_val)
+            return sizes
+
+        # Fallback: if only one option and it looks like sizes, use variant titles
+        if len(options) == 1:
+            opt_name = (options[0].get("name") or "").lower()
+            # If option name is "Title" with value "Default Title", skip (no real sizes)
+            values = options[0].get("values", [])
+            if values == ["Default Title"]:
+                return []
+            # Check if values look like sizes
+            size_patterns = re.compile(
+                r"^(XXS|XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|"
+                r"\d+(\.\d+)?|"
+                r"ONE SIZE|O/S|OS|OSFA|"
+                r"SM|MD|LG|"
+                r"\d+-\d+)$",
+                re.IGNORECASE,
+            )
+            if any(size_patterns.match(v.strip()) for v in values if v.strip()):
+                sizes = []
+                seen = set()
+                for v in variants:
+                    if v.get("available", True):
+                        title = v.get("title", "")
+                        if title and title != "Default Title" and title not in seen:
+                            sizes.append(title)
+                            seen.add(title)
+                return sizes
+
+        return []
 
     @staticmethod
     def _detect_gender(tags: list[str], title: str, product_type: str) -> str:
