@@ -634,6 +634,7 @@ async def suggest_retailer_page(
         "1": "Retailer added successfully! Product discovery is running in the background — refresh brand pages in a few minutes to see results.",
         "discovery_started": "Re-discovery started for this retailer. Refresh in a few minutes to see results.",
         "retailer_updated": "Retailer updated successfully.",
+        "retailer_deleted": "Retailer deleted.",
     }
 
     return templates.TemplateResponse(
@@ -703,6 +704,31 @@ async def edit_retailer(
 
     return RedirectResponse(
         "/suggest-retailer?success=retailer_updated",
+        status_code=HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/retailers/{retailer_id}/delete")
+async def delete_retailer(
+    request: Request,
+    retailer_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Delete a retailer and all its associated products."""
+    retailer = await session.get(Retailer, retailer_id)
+    if not retailer:
+        return RedirectResponse(
+            "/suggest-retailer?error=retailer_not_found",
+            status_code=HTTP_303_SEE_OTHER,
+        )
+
+    retailer_name = retailer.name
+    await session.delete(retailer)
+    await session.commit()
+    logger.info(f"Retailer deleted: {retailer_name} (id={retailer_id})")
+
+    return RedirectResponse(
+        "/suggest-retailer?success=retailer_deleted",
         status_code=HTTP_303_SEE_OTHER,
     )
 
