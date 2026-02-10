@@ -24,9 +24,9 @@ INITIAL_BRANDS = [
         "category": "running",
     },
     {
-        "name": "A.P.C.",
-        "slug": "apc",
-        "aliases": json.dumps(["APFR", "A.P.C", "APC"]),
+        "name": "APFR",
+        "slug": "apfr",
+        "aliases": json.dumps(["A.P.C.", "A.P.C", "APC"]),
         "category": "fashion",
     },
     {
@@ -46,12 +46,6 @@ INITIAL_BRANDS = [
         "slug": "arcteryx",
         "aliases": json.dumps(["Arcteryx", "Arc'teryx"]),
         "category": "outdoor",
-    },
-    {
-        "name": "Sabre Paris",
-        "slug": "sabre-paris",
-        "aliases": json.dumps(["Sabre"]),
-        "category": "fashion",
     },
 ]
 
@@ -116,24 +110,32 @@ INITIAL_RETAILERS = [
 
 
 async def seed_brands(session: AsyncSession) -> None:
+    """Seed initial brands only if no brands exist yet (first-ever startup)."""
+    from sqlalchemy import func
+
+    count = await session.execute(select(func.count(Brand.id)))
+    if (count.scalar() or 0) > 0:
+        logger.info("Brands already exist — skipping seed")
+        return
+
     for brand_data in INITIAL_BRANDS:
-        existing = await session.execute(
-            select(Brand).where(Brand.slug == brand_data["slug"])
-        )
-        if existing.scalar_one_or_none() is None:
-            session.add(Brand(**brand_data))
-            logger.info(f"Seeded brand: {brand_data['name']}")
+        session.add(Brand(**brand_data))
+        logger.info(f"Seeded brand: {brand_data['name']}")
     await session.commit()
 
 
 async def seed_retailers(session: AsyncSession) -> None:
+    """Seed initial retailers only if no retailers exist yet (first-ever startup)."""
+    from sqlalchemy import func
+
+    count = await session.execute(select(func.count(Retailer.id)))
+    if (count.scalar() or 0) > 0:
+        logger.info("Retailers already exist — skipping seed")
+        return
+
     for retailer_data in INITIAL_RETAILERS:
-        existing = await session.execute(
-            select(Retailer).where(Retailer.slug == retailer_data["slug"])
-        )
-        if existing.scalar_one_or_none() is None:
-            session.add(Retailer(**retailer_data))
-            logger.info(f"Seeded retailer: {retailer_data['name']}")
+        session.add(Retailer(**retailer_data))
+        logger.info(f"Seeded retailer: {retailer_data['name']}")
     await session.commit()
 
 
