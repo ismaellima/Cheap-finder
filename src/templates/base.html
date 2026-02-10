@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -52,7 +52,7 @@
     html:not(.dark) .light\:text-neutral-600 { color: #525252; }
   </style>
 </head>
-<body class="bg-neutral-950 dark:bg-neutral-950 text-neutral-100 dark:text-neutral-100 min-h-screen">
+<body class="bg-neutral-50 text-neutral-900 min-h-screen">
   {% include "components/nav.html" %}
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -62,7 +62,7 @@
   <script>
     // Theme management
     function getTheme() {
-      return localStorage.getItem('theme') || 'dark';
+      return localStorage.getItem('theme') || 'light';
     }
 
     function setTheme(theme) {
