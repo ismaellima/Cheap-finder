@@ -1,9 +1,13 @@
+import logging
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import inspect as sa_inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.config import settings
 from src.db.models import Base
+
+logger = logging.getLogger(__name__)
 
 
 def _get_database_url() -> str:
@@ -35,13 +39,63 @@ engine = create_async_engine(
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
+def _ensure_columns(conn) -> None:
+    """Add missing columns to existing tables (create_all doesn't do this).
+
+    Uses SQLAlchemy inspect to compare model schema vs actual DB schema.
+    Only ADDs columns — never drops or alters existing ones. Safe to run
+    on every startup (idempotent).
+    """
+    inspector = sa_inspect(conn)
+
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue  # create_all already handled new tables
+
+        existing_cols = {c["name"] for c in inspector.get_columns(table.name)}
+
+        for col in table.columns:
+            if col.name not in existing_cols:
+                # Build ALTER TABLE ADD COLUMN statement
+                col_type = col.type.compile(dialect=conn.dialect)
+
+                # Determine default value
+                default = ""
+                if col.default is not None:
+                    default_val = col.default.arg
+                    if isinstance(default_val, str):
+                        default = f" DEFAULT '{default_val}'"
+                    elif isinstance(default_val, bool):
+                        default = f" DEFAULT {'true' if default_val else 'false'}"
+                    elif isinstance(default_val, (int, float)):
+                        default = f" DEFAULT {default_val}"
+
+                # Handle nullability
+                if col.nullable or col.nullable is None:
+                    nullable = ""
+                else:
+                    nullable = " NOT NULL"
+
+                # Build the statement
+                if nullable and default:
+                    stmt = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}{default}{nullable}'
+                elif nullable and not default:
+                    # NOT NULL without default — use safe defaults
+                    stmt = f"ALTER TABLE \"{table.name}\" ADD COLUMN \"{col.name}\" {col_type} DEFAULT ''{nullable}"
+                else:
+                    stmt = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}{default}'
+
+                conn.execute(text(stmt))
+                logger.info(f"Auto-migration: added column {table.name}.{col.name} ({col_type})")
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         if _is_sqlite:
-            await conn.execute(
-                __import__("sqlalchemy").text("PRAGMA journal_mode=WAL")
-            )
+            await conn.execute(text("PRAGMA journal_mode=WAL"))
         await conn.run_sync(Base.metadata.create_all)
+        # Add any missing columns to existing tables
+        await conn.run_sync(_ensure_columns)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
