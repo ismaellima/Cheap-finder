@@ -580,6 +580,14 @@ async def suggest_retailer_page(
     )
     retailers = retailers_result.scalars().all()
 
+    # Product counts per retailer
+    retailer_product_counts: dict[int, int] = {}
+    for r in retailers:
+        count_result = await session.execute(
+            select(func.count(Product.id)).where(Product.retailer_id == r.id)
+        )
+        retailer_product_counts[r.id] = count_result.scalar() or 0
+
     unread_result = await session.execute(
         select(func.count(Notification.id)).where(Notification.read.is_(False))
     )
@@ -592,16 +600,34 @@ async def suggest_retailer_page(
         "slug_taken": "A retailer with this name already exists.",
     }
 
+    success_messages = {
+        "1": "Retailer added successfully! Product discovery is running in the background — refresh brand pages in a few minutes to see results.",
+        "discovery_started": "Re-discovery started for this retailer. Refresh in a few minutes to see results.",
+    }
+
     return templates.TemplateResponse(
         "suggest_retailer.html",
         {
             "request": request,
             "suggestions": suggestions,
             "retailers": retailers,
+            "retailer_product_counts": retailer_product_counts,
+            "skip_scrapers": SKIP_SCRAPERS,
             "unread_count": unread_count,
             "success": bool(success),
+            "success_message": success_messages.get(success, "") if success else "",
             "error_message": error_messages.get(error, ""),
         },
+    )
+
+
+@router.post("/retailers/{retailer_id}/discover")
+async def discover_retailer(request: Request, retailer_id: int):
+    """Trigger product discovery for a single retailer (retry/re-discover)."""
+    asyncio.create_task(_discover_retailer_background(retailer_id))
+    return RedirectResponse(
+        "/suggest-retailer?success=discovery_started",
+        status_code=HTTP_303_SEE_OTHER,
     )
 
 

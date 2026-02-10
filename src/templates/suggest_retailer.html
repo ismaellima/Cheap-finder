@@ -10,9 +10,9 @@
 </div>
 
 <!-- Success/Error messages -->
-{% if success %}
+{% if success_message %}
 <div class="bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 text-sm text-green-400 mb-6">
-  Retailer added successfully! Product discovery is running in the background — refresh brand pages in a few minutes to see results.
+  {{ success_message }}
 </div>
 {% endif %}
 
@@ -61,16 +61,50 @@
       {% if retailers %}
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {% for r in retailers %}
-        <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4 flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-2 h-2 rounded-full bg-green-500"></div>
-            <div>
-              <p class="text-sm font-medium text-white dark:text-white light:text-neutral-900">{{ r.name }}</p>
-              <a href="{{ r.base_url }}" target="_blank" rel="noopener noreferrer"
-                 class="text-xs text-neutral-500 hover:text-green-500 transition-colors">{{ r.base_url }}</a>
+        {% set product_count = retailer_product_counts.get(r.id, 0) %}
+        {% set is_skipped = r.scraper_type in skip_scrapers %}
+        <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3 min-w-0">
+              <!-- Status dot: green=has products, red=skipped/broken, yellow=no products yet -->
+              <div class="w-2 h-2 rounded-full shrink-0
+                {% if is_skipped %}bg-red-500
+                {% elif product_count > 0 %}bg-green-500
+                {% else %}bg-yellow-500{% endif %}" title="{% if is_skipped %}Scraper skipped{% elif product_count > 0 %}Working{% else %}No products yet{% endif %}"></div>
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-white dark:text-white light:text-neutral-900 truncate">{{ r.name }}</p>
+                <a href="{{ r.base_url }}" target="_blank" rel="noopener noreferrer"
+                   class="text-xs text-neutral-500 hover:text-green-500 transition-colors truncate block">{{ r.base_url }}</a>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0 ml-2">
+              <span class="text-[10px] text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-2 py-1 rounded">{{ r.scraper_type }}</span>
             </div>
           </div>
-          <span class="text-[10px] text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-2 py-1 rounded">{{ r.scraper_type }}</span>
+          <div class="flex items-center justify-between mt-3 pt-3 border-t border-neutral-800 dark:border-neutral-800 light:border-neutral-200">
+            <div class="flex items-center gap-3">
+              <!-- Product count badge -->
+              <span class="text-xs {% if product_count > 0 %}text-green-400{% else %}text-neutral-500{% endif %}">
+                {{ product_count }} product{{ 's' if product_count != 1 else '' }}
+              </span>
+              <!-- Status label -->
+              {% if is_skipped %}
+              <span class="text-[10px] text-red-400 bg-red-500/10 px-2 py-0.5 rounded">Scraper skipped</span>
+              {% elif product_count == 0 %}
+              <span class="text-[10px] text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded">Pending discovery</span>
+              {% endif %}
+            </div>
+            <!-- Retry / Re-discover button -->
+            {% if not is_skipped %}
+            <form method="POST" action="/retailers/{{ r.id }}/discover" class="inline">
+              <button type="submit"
+                      class="text-xs text-neutral-400 hover:text-green-400 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 hover:bg-neutral-700 dark:hover:bg-neutral-700 light:hover:bg-neutral-200 px-2.5 py-1 rounded transition-colors"
+                      title="Re-discover products for all brands at this retailer">
+                ↻ Re-discover
+              </button>
+            </form>
+            {% endif %}
+          </div>
         </div>
         {% endfor %}
       </div>
