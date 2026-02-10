@@ -184,7 +184,7 @@ function applyFilters() {
   let visible = 0;
 
   cards.forEach(card => {
-    const matchesGender = currentGender === 'all' || card.dataset.gender === currentGender;
+    const matchesGender = currentGender === 'all' || card.dataset.gender === currentGender || card.dataset.gender === '';
     const matchesSearch = !query || card.dataset.name.includes(query);
 
     if (matchesGender && matchesSearch) {

@@ -626,11 +626,14 @@ async def suggest_retailer_page(
         "invalid_url": "Invalid URL — must include https://",
         "duplicate": "A retailer with this URL already exists.",
         "slug_taken": "A retailer with this name already exists.",
+        "retailer_not_found": "Retailer not found.",
+        "retailer_empty_name": "Retailer name cannot be empty.",
     }
 
     success_messages = {
         "1": "Retailer added successfully! Product discovery is running in the background — refresh brand pages in a few minutes to see results.",
         "discovery_started": "Re-discovery started for this retailer. Refresh in a few minutes to see results.",
+        "retailer_updated": "Retailer updated successfully.",
     }
 
     return templates.TemplateResponse(
@@ -655,6 +658,51 @@ async def discover_retailer(request: Request, retailer_id: int):
     asyncio.create_task(_discover_retailer_background(retailer_id))
     return RedirectResponse(
         "/suggest-retailer?success=discovery_started",
+        status_code=HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/retailers/{retailer_id}/edit")
+async def edit_retailer(
+    request: Request,
+    retailer_id: int,
+    name: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    """Edit a retailer's name."""
+    retailer = await session.get(Retailer, retailer_id)
+    if not retailer:
+        return RedirectResponse(
+            "/suggest-retailer?error=retailer_not_found",
+            status_code=HTTP_303_SEE_OTHER,
+        )
+
+    name = name.strip()
+    if not name:
+        return RedirectResponse(
+            "/suggest-retailer?error=retailer_empty_name",
+            status_code=HTTP_303_SEE_OTHER,
+        )
+
+    # Check name uniqueness (excluding self)
+    if name != retailer.name:
+        existing = await session.execute(
+            select(Retailer).where(Retailer.name == name, Retailer.id != retailer_id)
+        )
+        if existing.scalar_one_or_none():
+            return RedirectResponse(
+                "/suggest-retailer?error=slug_taken",
+                status_code=HTTP_303_SEE_OTHER,
+            )
+
+        retailer.name = name
+        retailer.slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+    await session.commit()
+    logger.info(f"Retailer updated: {retailer.name} (id={retailer_id})")
+
+    return RedirectResponse(
+        "/suggest-retailer?success=retailer_updated",
         status_code=HTTP_303_SEE_OTHER,
     )
 

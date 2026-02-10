@@ -78,6 +78,12 @@
               </div>
             </div>
             <div class="flex items-center gap-2 shrink-0 ml-2">
+              <button type="button" onclick="document.getElementById('edit-retailer-{{ r.id }}').classList.remove('hidden')"
+                      class="text-neutral-500 hover:text-blue-400 transition-colors p-1" title="Edit retailer name">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+              </button>
               <span class="text-[10px] text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-2 py-1 rounded">{{ r.scraper_type }}</span>
             </div>
           </div>
@@ -158,4 +164,38 @@
     </section>
   </div>
 </div>
+
+<!-- Edit Retailer Modals -->
+{% for r in retailers %}
+<div id="edit-retailer-{{ r.id }}" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+     onclick="if(event.target===this) this.classList.add('hidden')">
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-xl p-6 w-full max-w-md mx-4">
+    <h3 class="text-lg font-semibold text-white dark:text-white light:text-neutral-900 mb-4">Edit Retailer</h3>
+    <form method="POST" action="/retailers/{{ r.id }}/edit">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Retailer Name</label>
+          <input type="text" name="name" required value="{{ r.name }}"
+                 class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Website URL</label>
+          <p class="text-sm text-neutral-400 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 truncate">{{ r.base_url }}</p>
+          <p class="text-[11px] text-neutral-600 mt-1">URL cannot be changed after creation.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 mt-6">
+        <button type="submit"
+                class="flex-1 bg-green-600 hover:bg-green-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors">
+          Save Changes
+        </button>
+        <button type="button" onclick="document.getElementById('edit-retailer-{{ r.id }}').classList.add('hidden')"
+                class="flex-1 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-200 hover:bg-neutral-700 dark:hover:bg-neutral-700 light:hover:bg-neutral-300 text-neutral-300 dark:text-neutral-300 light:text-neutral-700 text-sm font-medium py-2 px-4 rounded-lg transition-colors">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
 {% endblock %}
