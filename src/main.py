@@ -17,7 +17,7 @@ from src.api.routes_products import router as products_router
 from src.auth import AuthMiddleware, router as auth_router
 from src.brands.registry import seed_all
 from src.config import settings
-from src.db.models import Product
+from src.db.models import Product, Retailer
 from src.db.session import async_session, init_db
 from src.tracking.scheduler import setup_scheduler, setup_keep_alive
 
@@ -26,6 +26,36 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+async def _fix_scraper_types() -> None:
+    """Auto-fix retailer scraper_type for retailers with dedicated scrapers.
+
+    This runs on every startup so that when a new scraper is deployed,
+    the DB is updated automatically without manual SQL.
+    """
+    # Map base_url patterns to correct scraper_type
+    url_to_scraper: dict[str, str] = {
+        "bluebuttonshop.com": "bluebuttonshop",
+    }
+
+    async with async_session() as session:
+        for url_pattern, correct_type in url_to_scraper.items():
+            result = await session.execute(
+                select(Retailer).where(
+                    Retailer.base_url.contains(url_pattern),
+                    Retailer.scraper_type != correct_type,
+                )
+            )
+            retailer = result.scalar_one_or_none()
+            if retailer:
+                old_type = retailer.scraper_type
+                retailer.scraper_type = correct_type
+                await session.commit()
+                logger.info(
+                    f"Auto-fixed scraper type for {retailer.name}: "
+                    f"{old_type} -> {correct_type}"
+                )
 
 
 async def _run_discovery_if_needed() -> None:
@@ -74,6 +104,9 @@ async def lifespan(app: FastAPI):
 
     async with async_session() as session:
         await seed_all(session)
+
+    # Auto-fix retailer scraper types (e.g. Blue Button Shop: generic -> bluebuttonshop)
+    await _fix_scraper_types()
 
     # Discover products if DB is empty (first deploy / fresh PostgreSQL)
     try:
