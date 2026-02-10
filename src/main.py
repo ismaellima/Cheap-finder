@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 from contextlib import asynccontextmanager
@@ -109,10 +110,8 @@ async def lifespan(app: FastAPI):
     await _fix_scraper_types()
 
     # Discover products if DB is empty (first deploy / fresh PostgreSQL)
-    try:
-        await _run_discovery_if_needed()
-    except Exception:
-        logger.exception("Startup discovery failed — will retry on next restart")
+    # Run as background task so the app starts serving /health immediately
+    asyncio.create_task(_run_discovery_if_needed())
 
     scheduler = setup_scheduler()
 
