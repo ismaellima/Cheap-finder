@@ -4,21 +4,34 @@ import logging
 import re
 
 from src.retailers.base import RetailerBase, ScrapedPrice, ScrapedProduct
+from src.retailers.shopify_base import ShopifyBase
 
 logger = logging.getLogger(__name__)
 
 
-class GenericScraper(RetailerBase):
+class GenericScraper(ShopifyBase):
+    """Generic scraper that tries Shopify endpoints first, then falls back
+    to meta tags / JSON-LD for price extraction.
+
+    Most new retailers added via the UI are Shopify stores, so the Shopify
+    search_brand() and collection endpoints work out of the box. For
+    non-Shopify sites, the Shopify endpoints will return errors and the
+    scraper gracefully returns empty results.
+    """
+
     name = "Generic"
     slug = "generic"
     base_url = ""
     requires_js = False
 
-    async def search_brand(self, brand_name: str) -> list[ScrapedProduct]:
-        logger.warning(f"Generic scraper cannot search brands — override for specific retailers")
-        return []
-
     async def get_price(self, product_url: str) -> ScrapedPrice | None:
+        """Try Shopify JSON endpoint first, then fall back to meta/JSON-LD."""
+        # Try Shopify .json endpoint
+        result = await super().get_price(product_url)
+        if result is not None:
+            return result
+
+        # Fallback: parse HTML for meta tags and JSON-LD
         try:
             soup = await self._fetch_soup(product_url)
         except Exception:

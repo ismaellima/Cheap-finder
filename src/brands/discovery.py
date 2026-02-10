@@ -93,6 +93,11 @@ async def discover_brand_at_retailer(
     scraper: RetailerBase,
 ) -> list[ScrapedProduct]:
     """Search for a brand at a retailer and return scraped products."""
+    # For generic scrapers, set the base_url to the retailer's URL
+    # so Shopify endpoints point to the right store
+    if scraper.slug == "generic" and retailer.base_url:
+        scraper.base_url = retailer.base_url.rstrip("/")
+
     aliases = json.loads(brand.aliases) if brand.aliases else []
     search_terms = [brand.name] + aliases
 
