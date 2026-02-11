@@ -161,7 +161,7 @@ class AltitudeSportsScraper(RetailerBase):
         if not name or not slug:
             return None
 
-        url = f"{self.base_url}/products/{slug}"
+        url = f"{self.base_url}/p/{slug}"
 
         # Price is stored as {"CAD": {"centAmount": [12999]}}
         price = self._extract_cents(hit.get("price", {}))

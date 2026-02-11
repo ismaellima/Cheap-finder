@@ -89,6 +89,21 @@ def _ensure_columns(conn) -> None:
                 logger.info(f"Auto-migration: added column {table.name}.{col.name} ({col_type})")
 
 
+def _fix_product_urls(conn) -> None:
+    """One-time fixups for product URLs with wrong path patterns."""
+    # Altitude Sports: /products/ → /p/ (correct path prefix)
+    result = conn.execute(text(
+        "UPDATE products SET url = REPLACE(url, "
+        "'altitude-sports.com/products/', 'altitude-sports.com/p/') "
+        "WHERE url LIKE '%altitude-sports.com/products/%'"
+    ))
+    if result.rowcount:
+        logger.info(
+            f"URL fixup: corrected {result.rowcount} Altitude Sports product URLs "
+            "(/products/ → /p/)"
+        )
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         if _is_sqlite:
@@ -96,6 +111,8 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
         # Add any missing columns to existing tables
         await conn.run_sync(_ensure_columns)
+        # Fix any product URLs with wrong path patterns
+        await conn.run_sync(_fix_product_urls)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
