@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.db.models import AlertRule, Brand, BrandRetailer, Product, Retailer
+from src.db.models import AlertRule, Brand, BrandRetailer, PriceRecord, Product, Retailer
 from src.db.session import get_session
 
 router = APIRouter(prefix="/api/brands", tags=["brands"])
@@ -52,6 +52,101 @@ async def export_all(session: AsyncSession = Depends(get_session)):
                 "active": r.active,
             }
             for r in retailers
+        ],
+    }
+
+
+@export_router.get("/export-full")
+async def export_full(session: AsyncSession = Depends(get_session)):
+    """Export all data (brands, retailers, products, prices) for full DB sync."""
+    brands_result = await session.execute(select(Brand).order_by(Brand.name))
+    brands = brands_result.scalars().all()
+
+    retailers_result = await session.execute(select(Retailer).order_by(Retailer.name))
+    retailers = retailers_result.scalars().all()
+
+    br_result = await session.execute(
+        select(BrandRetailer)
+        .options(selectinload(BrandRetailer.brand), selectinload(BrandRetailer.retailer))
+    )
+    brand_retailers = br_result.scalars().all()
+
+    products_result = await session.execute(
+        select(Product)
+        .options(selectinload(Product.brand), selectinload(Product.retailer))
+        .order_by(Product.id)
+    )
+    products = products_result.scalars().all()
+
+    prices_result = await session.execute(
+        select(PriceRecord)
+        .options(selectinload(PriceRecord.product))
+        .order_by(PriceRecord.recorded_at)
+    )
+    prices = prices_result.scalars().all()
+
+    return {
+        "brands": [
+            {
+                "name": b.name,
+                "slug": b.slug,
+                "aliases": json.loads(b.aliases) if b.aliases else [],
+                "category": b.category or "",
+                "alert_threshold_pct": b.alert_threshold_pct,
+                "active": b.active,
+            }
+            for b in brands
+        ],
+        "retailers": [
+            {
+                "name": r.name,
+                "slug": r.slug,
+                "base_url": r.base_url,
+                "scraper_type": r.scraper_type,
+                "requires_js": r.requires_js,
+                "active": r.active,
+            }
+            for r in retailers
+        ],
+        "brand_retailers": [
+            {
+                "brand_slug": br.brand.slug,
+                "retailer_slug": br.retailer.slug,
+                "brand_url": br.brand_url or "",
+                "verified": br.verified,
+            }
+            for br in brand_retailers
+        ],
+        "products": [
+            {
+                "name": p.name,
+                "brand_slug": p.brand.slug,
+                "retailer_slug": p.retailer.slug,
+                "url": p.url,
+                "image_url": p.image_url or "",
+                "thumbnail_url": p.thumbnail_url or "",
+                "sku": p.sku or "",
+                "gender": p.gender or "",
+                "sizes": p.sizes or "",
+                "current_price": p.current_price,
+                "original_price": p.original_price,
+                "on_sale": p.on_sale,
+                "tracked": p.tracked,
+                "last_checked": p.last_checked.isoformat() if p.last_checked else None,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in products
+        ],
+        "price_records": [
+            {
+                "product_url": pr.product.url,
+                "price": pr.price,
+                "original_price": pr.original_price,
+                "on_sale": pr.on_sale,
+                "currency": pr.currency,
+                "recorded_at": pr.recorded_at.isoformat() if pr.recorded_at else None,
+            }
+            for pr in prices
         ],
     }
 

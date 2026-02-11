@@ -98,20 +98,32 @@ async def _run_discovery_if_needed() -> None:
         await scraper.close()
 
 
+async def _startup_background() -> None:
+    """Run all slow startup tasks in the background.
+
+    This keeps the lifespan fast so uvicorn binds to the port immediately
+    and Render's health check passes.
+    """
+    try:
+        async with async_session() as session:
+            await seed_all(session)
+        logger.info("Seeding complete")
+
+        await _fix_scraper_types()
+
+        await _run_discovery_if_needed()
+    except Exception:
+        logger.exception("Background startup task failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Cheap Finder")
     await init_db()
 
-    async with async_session() as session:
-        await seed_all(session)
-
-    # Auto-fix retailer scraper types (e.g. Blue Button Shop: generic -> bluebuttonshop)
-    await _fix_scraper_types()
-
-    # Discover products if DB is empty (first deploy / fresh PostgreSQL)
-    # Run as background task so the app starts serving /health immediately
-    asyncio.create_task(_run_discovery_if_needed())
+    # Run seeding, scraper fixes, and discovery in background
+    # so the app starts serving /health immediately
+    asyncio.create_task(_startup_background())
 
     scheduler = setup_scheduler()
 
