@@ -57,10 +57,22 @@ INITIAL_BRANDS = [
         "category": "fashion",
     },
     {
+        "name": "Beams",
+        "slug": "beams",
+        "aliases": json.dumps([]),
+        "category": "fashion",
+    },
+    {
         "name": "Beams Plus",
         "slug": "beams-plus",
         "aliases": json.dumps([]),
         "category": "fashion",
+    },
+    {
+        "name": "Ciele",
+        "slug": "ciele",
+        "aliases": json.dumps([]),
+        "category": "outdoor",
     },
     {
         "name": "District Vision",
@@ -75,10 +87,28 @@ INITIAL_BRANDS = [
         "category": "fashion",
     },
     {
+        "name": "Keen",
+        "slug": "keen",
+        "aliases": json.dumps([]),
+        "category": "footwear",
+    },
+    {
+        "name": "Kitowa",
+        "slug": "kitowa",
+        "aliases": json.dumps([]),
+        "category": "Perfume",
+    },
+    {
         "name": "Koumori",
         "slug": "koumori",
         "aliases": json.dumps([]),
         "category": "running",
+    },
+    {
+        "name": "Nanga",
+        "slug": "nanga",
+        "aliases": json.dumps([]),
+        "category": "fashion",
     },
     {
         "name": "New Balance",
@@ -104,6 +134,12 @@ INITIAL_BRANDS = [
         "aliases": json.dumps(["Satisfy"]),
         "category": "running",
     },
+    {
+        "name": "Tekla",
+        "slug": "tekla",
+        "aliases": json.dumps([]),
+        "category": "home",
+    },
 ]
 
 INITIAL_RETAILERS = [
@@ -115,8 +151,8 @@ INITIAL_RETAILERS = [
         "requires_js": False,
     },
     {
-        "name": "Annmz",
-        "slug": "annmz",
+        "name": "Annms",
+        "slug": "annms",
         "base_url": "https://www.annmsshop.com",
         "scraper_type": "generic",
         "requires_js": False,
@@ -129,9 +165,23 @@ INITIAL_RETAILERS = [
         "requires_js": False,
     },
     {
+        "name": "Boutique archive",
+        "slug": "boutique-archive",
+        "base_url": "https://www.boutiquearchive.com",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
         "name": "Capsule Toronto",
         "slug": "capsule-toronto",
         "base_url": "https://www.capsuletoronto.com",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
+        "name": "Culture athletics",
+        "slug": "culture-athletics",
+        "base_url": "https://cultureathletics.com",
         "scraper_type": "generic",
         "requires_js": False,
     },
@@ -146,6 +196,13 @@ INITIAL_RETAILERS = [
         "name": "En route run",
         "slug": "en-route-run",
         "base_url": "https://www.enroute.run",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
+        "name": "Gravity pope",
+        "slug": "gravity-pope",
+        "base_url": "https://www.gravitypope.com",
         "scraper_type": "generic",
         "requires_js": False,
     },
@@ -178,6 +235,13 @@ INITIAL_RETAILERS = [
         "requires_js": False,
     },
     {
+        "name": "Lost and found",
+        "slug": "lost-and-found",
+        "base_url": "https://shoplostfound.com",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
         "name": "Muddy George",
         "slug": "muddy-george",
         "base_url": "https://muddygeorge.com",
@@ -192,10 +256,38 @@ INITIAL_RETAILERS = [
         "requires_js": False,
     },
     {
+        "name": "Nomad",
+        "slug": "nomad",
+        "base_url": "https://nomadshop.net",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
         "name": "Nordstrom",
         "slug": "nordstrom",
         "base_url": "https://www.nordstrom.ca",
         "scraper_type": "nordstrom",
+        "requires_js": False,
+    },
+    {
+        "name": "O lodge",
+        "slug": "o-lodge",
+        "base_url": "https://olodge.ca",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
+        "name": "Out and about",
+        "slug": "out-and-about",
+        "base_url": "https://outnaboutboutique.com",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
+        "name": "Run parlour",
+        "slug": "run-parlour",
+        "base_url": "https://runparlour.com",
+        "scraper_type": "generic",
         "requires_js": False,
     },
     {
@@ -217,6 +309,20 @@ INITIAL_RETAILERS = [
         "slug": "sporting-life",
         "base_url": "https://www.sportinglife.ca",
         "scraper_type": "sporting_life",
+        "requires_js": False,
+    },
+    {
+        "name": "Stomping ground",
+        "slug": "stomping-ground",
+        "base_url": "https://stompingground.ca",
+        "scraper_type": "generic",
+        "requires_js": False,
+    },
+    {
+        "name": "TNT",
+        "slug": "tnt",
+        "base_url": "https://tntfashion.ca",
+        "scraper_type": "generic",
         "requires_js": False,
     },
     {
