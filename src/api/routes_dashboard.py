@@ -48,8 +48,15 @@ def _cleanup_stale_progress() -> None:
 router = APIRouter(tags=["dashboard"])
 templates = Jinja2Templates(directory="src/templates")
 
-# Make auth_enabled available in all templates (for logout button in nav)
+# Make auth_enabled available in all templates (for logout/login button in nav)
 templates.env.globals["auth_enabled"] = bool(settings.DASHBOARD_PASSWORD)
+
+
+def _is_admin(request: Request) -> bool:
+    """Check if the current request is from an authenticated admin user."""
+    if not bool(settings.DASHBOARD_PASSWORD):
+        return True  # No password set — everyone is admin
+    return bool(request.session.get("authenticated"))
 
 
 def _from_json(value: str) -> list:
@@ -149,6 +156,7 @@ async def dashboard(
             "format_price": format_price,
             "success_message": success_messages.get(success, ""),
             "error_message": error_messages.get(error, ""),
+            "is_admin": _is_admin(request),
         },
     )
 
@@ -485,7 +493,7 @@ async def brand_detail(
     if not brand:
         return templates.TemplateResponse(
             "dashboard.html",
-            {"request": request, "error": "Brand not found"},
+            {"request": request, "error": "Brand not found", "is_admin": _is_admin(request)},
             status_code=404,
         )
 
@@ -557,6 +565,7 @@ async def brand_detail(
             "format_price": format_price,
             "success_message": brand_success_messages.get(success, ""),
             "error_message": brand_error_messages.get(error, ""),
+            "is_admin": _is_admin(request),
         },
     )
 
@@ -573,7 +582,7 @@ async def product_detail(
     if not product:
         return templates.TemplateResponse(
             "dashboard.html",
-            {"request": request, "error": "Product not found"},
+            {"request": request, "error": "Product not found", "is_admin": _is_admin(request)},
             status_code=404,
         )
 
@@ -594,6 +603,7 @@ async def product_detail(
             "trend": trend,
             "unread_count": unread_count,
             "format_price": format_price,
+            "is_admin": _is_admin(request),
         },
     )
 
@@ -623,6 +633,7 @@ async def notifications_page(
             "request": request,
             "notifications": notifications,
             "unread_count": unread_count,
+            "is_admin": _is_admin(request),
         },
     )
 
@@ -655,6 +666,7 @@ async def alerts_page(
             "rules": rules,
             "brands": brands,
             "unread_count": unread_count,
+            "is_admin": _is_admin(request),
         },
     )
 
@@ -738,6 +750,7 @@ async def suggest_retailer_page(
             "success": bool(success),
             "success_message": success_messages.get(success, "") if success else "",
             "error_message": error_messages.get(error, ""),
+            "is_admin": _is_admin(request),
         },
     )
 

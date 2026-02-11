@@ -7,10 +7,12 @@
     <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Alert Rules</h1>
     <p class="text-sm text-neutral-500 mt-1">Configure when to get notified about price drops</p>
   </div>
+  {% if is_admin %}
   <button onclick="document.getElementById('add-rule-modal').classList.remove('hidden')"
           class="text-sm bg-green-600 hover:bg-green-500 text-white font-medium px-4 py-2 rounded-lg transition-colors">
     Add Rule
   </button>
+  {% endif %}
 </div>
 
 <!-- Existing rules -->
@@ -49,6 +51,7 @@
         {% endif %}
       </div>
 
+      {% if is_admin %}
       <!-- Delete -->
       <button hx-delete="/api/alerts/rules/{{ rule.id }}" hx-target="closest div" hx-swap="outerHTML"
               class="text-neutral-600 hover:text-red-400 transition-colors">
@@ -56,6 +59,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
         </svg>
       </button>
+      {% endif %}
     </div>
   </div>
   {% endfor %}
@@ -66,6 +70,7 @@
 </div>
 {% endif %}
 
+{% if is_admin %}
 <!-- Add Rule Modal -->
 <div id="add-rule-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
   <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-xl p-6 w-full max-w-md mx-4">
@@ -110,4 +115,5 @@
     </form>
   </div>
 </div>
+{% endif %}
 {% endblock %}

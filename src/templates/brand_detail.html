@@ -36,6 +36,7 @@
     </div>
   </div>
   <div class="flex items-center gap-3">
+    {% if is_admin %}
     <form method="POST" action="/brands/{{ brand.id }}/discover" class="inline">
       <button type="submit"
               onclick="this.disabled=true; this.innerText='Discovering...'; this.form.submit()"
@@ -53,9 +54,11 @@
       </svg>
       Edit
     </button>
+    {% endif %}
     <span class="text-xs text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-3 py-1.5 rounded-lg">
       Alert at {{ brand.alert_threshold_pct | int }}% drop
     </span>
+    {% if is_admin %}
     <form method="POST" action="/brands/{{ brand.id }}/delete" class="inline"
           data-brand-name="{{ brand.name }}"
           onsubmit="return confirm('Delete ' + this.dataset.brandName + '? This will remove all tracked products, price history, and alert rules for this brand. This cannot be undone.')">
@@ -64,6 +67,7 @@
         Delete Brand
       </button>
     </form>
+    {% endif %}
   </div>
 </div>
 
@@ -240,6 +244,7 @@ document.getElementById('product-search').addEventListener('input', applyFilters
 })();
 </script>
 
+{% if is_admin %}
 <!-- Edit Brand Modal -->
 <div id="edit-brand-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
      onclick="if(event.target===this) this.classList.add('hidden')">
@@ -283,4 +288,5 @@ document.getElementById('product-search').addEventListener('input', applyFilters
     </form>
   </div>
 </div>
+{% endif %}
 {% endblock %}

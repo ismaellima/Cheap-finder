@@ -41,7 +41,11 @@ def verify_password(plain: str) -> bool:
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Middleware that protects all routes when DASHBOARD_PASSWORD is set."""
+    """Middleware that protects mutating routes when DASHBOARD_PASSWORD is set.
+
+    GET requests to dashboard pages are public (read-only browsing).
+    POST/PUT/DELETE requests require authentication (admin actions).
+    """
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         # If no password configured, pass through (open access)
@@ -49,6 +53,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         path = request.url.path
+        method = request.method
 
         # Allow public endpoints
         if path in PUBLIC_PATHS:
@@ -58,11 +63,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path.startswith("/static"):
             return await call_next(request)
 
-        # Check session cookie
+        # Already authenticated — allow everything
         if request.session.get("authenticated"):
             return await call_next(request)
 
-        # Not authenticated — handle based on request type
+        # GET requests are public (read-only dashboard browsing)
+        if method == "GET":
+            return await call_next(request)
+
+        # Not authenticated + mutating request (POST/PUT/DELETE) — block
         if path.startswith("/api/"):
             # API routes return 401 JSON
             return JSONResponse(
@@ -76,7 +85,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             response.headers["HX-Redirect"] = "/login"
             return response
 
-        # Dashboard routes redirect to login
+        # Dashboard POST routes redirect to login
         return RedirectResponse("/login", status_code=HTTP_303_SEE_OTHER)
 
 

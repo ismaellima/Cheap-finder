@@ -4,8 +4,8 @@
 {% block content %}
 <div class="flex items-center justify-between mb-8">
   <div>
-    <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Suggest a Retailer</h1>
-    <p class="text-sm text-neutral-500 mt-1">Add a new Canadian retailer to track. We'll verify the URL and start monitoring it.</p>
+    <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Retailers</h1>
+    <p class="text-sm text-neutral-500 mt-1">{% if is_admin %}Add a new Canadian retailer to track. We'll verify the URL and start monitoring it.{% else %}Canadian retailers currently being tracked for price drops.{% endif %}</p>
   </div>
 </div>
 
@@ -22,7 +22,8 @@
 </div>
 {% endif %}
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<div class="grid grid-cols-1 {% if is_admin %}lg:grid-cols-3{% endif %} gap-8">
+  {% if is_admin %}
   <!-- Left: Suggestion form -->
   <div class="lg:col-span-1">
     <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-xl p-6">
@@ -50,9 +51,10 @@
       </form>
     </div>
   </div>
+  {% endif %}
 
   <!-- Right: Active retailers + suggestion history -->
-  <div class="lg:col-span-2 space-y-8">
+  <div class="{% if is_admin %}lg:col-span-2{% endif %} space-y-8">
     <!-- Current Retailers -->
     <section>
       <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-4">
@@ -78,12 +80,14 @@
               </div>
             </div>
             <div class="flex items-center gap-2 shrink-0 ml-2">
+              {% if is_admin %}
               <button type="button" onclick="document.getElementById('edit-retailer-{{ r.id }}').classList.remove('hidden')"
                       class="text-neutral-500 hover:text-blue-400 transition-colors p-1" title="Edit retailer name">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                 </svg>
               </button>
+              {% endif %}
               <span class="text-[10px] text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-2 py-1 rounded">{{ r.scraper_type }}</span>
             </div>
           </div>
@@ -101,6 +105,7 @@
                 <span class="text-[10px] text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded">Pending discovery</span>
                 {% endif %}
               </div>
+              {% if is_admin %}
               <div class="flex items-center gap-2">
                 <!-- Retry / Re-discover button -->
                 {% if not is_skipped %}
@@ -123,6 +128,7 @@
                   </button>
                 </form>
               </div>
+              {% endif %}
             </div>
             <!-- Discovery progress area -->
             <div id="discover-progress-{{ r.id }}" class="hidden mt-2"></div>
@@ -135,6 +141,7 @@
       {% endif %}
     </section>
 
+    {% if is_admin %}
     <!-- Suggestion History -->
     <section>
       <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-4">
@@ -178,9 +185,11 @@
       </div>
       {% endif %}
     </section>
+    {% endif %}
   </div>
 </div>
 
+{% if is_admin %}
 <!-- Edit Retailer Modals -->
 {% for r in retailers %}
 <div id="edit-retailer-{{ r.id }}" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -214,7 +223,9 @@
   </div>
 </div>
 {% endfor %}
+{% endif %}
 
+{% if is_admin %}
 <script>
 function startDiscovery(retailerId) {
   var btn = document.getElementById('discover-btn-' + retailerId);
@@ -332,4 +343,5 @@ function resetButton(retailerId) {
   progressDiv.innerHTML = '';
 }
 </script>
+{% endif %}
 {% endblock %}
