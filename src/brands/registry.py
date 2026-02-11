@@ -95,6 +95,13 @@ INITIAL_RETAILERS = [
         "requires_js": False,
     },
     {
+        "name": "Blue Button Shop",
+        "slug": "bluebuttonshop",
+        "base_url": "https://www.bluebuttonshop.com",
+        "scraper_type": "bluebuttonshop",
+        "requires_js": False,
+    },
+    {
         "name": "Capsule Toronto",
         "slug": "capsule-toronto",
         "base_url": "https://www.capsuletoronto.com",
