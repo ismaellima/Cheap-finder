@@ -4,14 +4,17 @@ import asyncio
 import json
 import logging
 import re
+import time
+from typing import Any, Dict
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.responses import StreamingResponse
 from starlette.status import HTTP_303_SEE_OTHER
 
 from src.config import settings
@@ -27,6 +30,20 @@ from src.db.models import (
 from src.db.session import async_session, get_session
 
 logger = logging.getLogger(__name__)
+
+# In-memory progress tracking for retailer discovery tasks.
+# Key: "retailer-{id}", Value: progress dict.
+# Entries are ephemeral — they exist only while the server is running.
+_discovery_progress: Dict[str, Dict[str, Any]] = {}
+
+
+def _cleanup_stale_progress() -> None:
+    """Remove progress entries older than 5 minutes."""
+    cutoff = time.time() - 300
+    stale = [k for k, v in _discovery_progress.items() if v.get("updated_at", 0) < cutoff]
+    for k in stale:
+        del _discovery_progress[k]
+
 
 router = APIRouter(tags=["dashboard"])
 templates = Jinja2Templates(directory="src/templates")
@@ -338,33 +355,105 @@ async def _discover_all_background() -> None:
 
 
 async def _discover_retailer_background(retailer_id: int) -> None:
-    """Run discovery for all brands at a single retailer in the background."""
-    from src.brands.discovery import discover_single_retailer
+    """Run discovery for all brands at a single retailer, updating progress."""
+    from src.brands.discovery import discover_brand_at_retailer, store_scraped_products
     from src.retailers import get_all_scrapers
+
+    task_key = f"retailer-{retailer_id}"
 
     try:
         async with async_session() as session:
             retailer = await session.get(Retailer, retailer_id)
             if not retailer:
+                _discovery_progress.pop(task_key, None)
                 return
+
             all_scrapers = get_all_scrapers()
             scraper = all_scrapers.get(retailer.scraper_type)
             if not scraper:
+                _discovery_progress.pop(task_key, None)
                 return
+
+            # Fetch all active brands
+            brands_result = await session.execute(
+                select(Brand).where(Brand.active.is_(True)).order_by(Brand.name)
+            )
+            brands = list(brands_result.scalars().all())
+
+            # Initialize progress
+            _discovery_progress[task_key] = {
+                "status": "running",
+                "current_brand": "",
+                "brands_done": 0,
+                "brands_total": len(brands),
+                "products_found": 0,
+                "new_products": 0,
+                "message": "",
+                "updated_at": time.time(),
+            }
+
+            total_products = 0
+            total_new = 0
+
             try:
-                stats = await discover_single_retailer(session, retailer, scraper)
+                for i, brand in enumerate(brands):
+                    # Update progress: starting this brand
+                    _discovery_progress[task_key].update({
+                        "current_brand": brand.name,
+                        "brands_done": i,
+                        "updated_at": time.time(),
+                    })
+
+                    scraped = await discover_brand_at_retailer(
+                        session, brand, retailer, scraper
+                    )
+
+                    brand_new = 0
+                    if scraped:
+                        total_products += len(scraped)
+                        brand_new = await store_scraped_products(
+                            session, brand, retailer, scraped
+                        )
+                        total_new += brand_new
+
+                    # Update progress: finished this brand
+                    _discovery_progress[task_key].update({
+                        "brands_done": i + 1,
+                        "products_found": total_products,
+                        "new_products": total_new,
+                        "updated_at": time.time(),
+                    })
+
+                # Mark as done
+                _discovery_progress[task_key].update({
+                    "status": "done",
+                    "current_brand": "",
+                    "message": f"Found {total_products} products ({total_new} new)",
+                    "updated_at": time.time(),
+                })
+
                 logger.info(
                     f"Background retailer discovery for {retailer.name}: "
-                    f"{stats['new_products']} new products"
+                    f"{total_new} new products"
                 )
             finally:
                 await scraper.close()
-                # Close any other scrapers that were instantiated
                 for s in all_scrapers.values():
                     if s is not scraper:
                         await s.close()
-    except Exception:
+
+    except Exception as exc:
         logger.exception(f"Background discovery failed for retailer_id={retailer_id}")
+        _discovery_progress[task_key] = {
+            "status": "error",
+            "current_brand": "",
+            "brands_done": 0,
+            "brands_total": 0,
+            "products_found": 0,
+            "new_products": 0,
+            "message": f"Error: {str(exc)[:200]}",
+            "updated_at": time.time(),
+        }
 
 
 @router.post("/discover")
@@ -655,11 +744,56 @@ async def suggest_retailer_page(
 
 @router.post("/retailers/{retailer_id}/discover")
 async def discover_retailer(request: Request, retailer_id: int):
-    """Trigger product discovery for a single retailer (retry/re-discover)."""
+    """Trigger product discovery for a single retailer."""
+    task_key = f"retailer-{retailer_id}"
+
+    # Prevent duplicate discovery runs
+    existing = _discovery_progress.get(task_key)
+    if existing and existing.get("status") == "running":
+        return JSONResponse(
+            {"status": "already_running", "task_key": task_key},
+            status_code=409,
+        )
+
+    # Clean up stale entries
+    _cleanup_stale_progress()
+
     asyncio.create_task(_discover_retailer_background(retailer_id))
-    return RedirectResponse(
-        "/suggest-retailer?success=discovery_started",
-        status_code=HTTP_303_SEE_OTHER,
+    return JSONResponse({"status": "started", "task_key": task_key})
+
+
+@router.get("/retailers/{retailer_id}/discover-progress")
+async def discover_progress_sse(request: Request, retailer_id: int):
+    """SSE endpoint that streams discovery progress events."""
+    task_key = f"retailer-{retailer_id}"
+
+    async def event_generator():
+        """Yield SSE events until discovery completes or client disconnects."""
+        while True:
+            if await request.is_disconnected():
+                break
+
+            progress = _discovery_progress.get(task_key)
+
+            if progress is None:
+                yield f"data: {json.dumps({'status': 'idle'})}\n\n"
+                break
+
+            yield f"data: {json.dumps(progress)}\n\n"
+
+            if progress["status"] in ("done", "error"):
+                break
+
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

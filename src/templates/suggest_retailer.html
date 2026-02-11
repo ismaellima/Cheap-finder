@@ -87,41 +87,45 @@
               <span class="text-[10px] text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-2 py-1 rounded">{{ r.scraper_type }}</span>
             </div>
           </div>
-          <div class="flex items-center justify-between mt-3 pt-3 border-t border-neutral-800 dark:border-neutral-800 light:border-neutral-200">
-            <div class="flex items-center gap-3">
-              <!-- Product count badge -->
-              <span class="text-xs {% if product_count > 0 %}text-green-400{% else %}text-neutral-500{% endif %}">
-                {{ product_count }} product{{ 's' if product_count != 1 else '' }}
-              </span>
-              <!-- Status label -->
-              {% if is_skipped %}
-              <span class="text-[10px] text-red-400 bg-red-500/10 px-2 py-0.5 rounded">Scraper skipped</span>
-              {% elif product_count == 0 %}
-              <span class="text-[10px] text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded">Pending discovery</span>
-              {% endif %}
-            </div>
-            <div class="flex items-center gap-2">
-              <!-- Retry / Re-discover button -->
-              {% if not is_skipped %}
-              <form method="POST" action="/retailers/{{ r.id }}/discover" class="inline">
-                <button type="submit"
+          <div class="mt-3 pt-3 border-t border-neutral-800 dark:border-neutral-800 light:border-neutral-200">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <!-- Product count badge -->
+                <span class="text-xs {% if product_count > 0 %}text-green-400{% else %}text-neutral-500{% endif %}">
+                  {{ product_count }} product{{ 's' if product_count != 1 else '' }}
+                </span>
+                <!-- Status label -->
+                {% if is_skipped %}
+                <span class="text-[10px] text-red-400 bg-red-500/10 px-2 py-0.5 rounded">Scraper skipped</span>
+                {% elif product_count == 0 %}
+                <span class="text-[10px] text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded">Pending discovery</span>
+                {% endif %}
+              </div>
+              <div class="flex items-center gap-2">
+                <!-- Retry / Re-discover button -->
+                {% if not is_skipped %}
+                <button type="button"
+                        id="discover-btn-{{ r.id }}"
+                        onclick="startDiscovery({{ r.id }})"
                         class="text-xs text-neutral-400 hover:text-green-400 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 hover:bg-neutral-700 dark:hover:bg-neutral-700 light:hover:bg-neutral-200 px-2.5 py-1 rounded transition-colors"
                         title="Re-discover products for all brands at this retailer">
                   ↻ Re-discover
                 </button>
-              </form>
-              {% endif %}
-              <!-- Delete button -->
-              <form method="POST" action="/retailers/{{ r.id }}/delete" class="inline"
-                    data-name="{{ r.name }}"
-                    onsubmit="return confirm('Delete ' + this.dataset.name + '? This will remove all products from this retailer. This cannot be undone.')">
-                <button type="submit"
-                        class="text-xs text-neutral-400 hover:text-red-400 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 hover:bg-red-500/10 px-2.5 py-1 rounded transition-colors"
-                        title="Delete retailer">
-                  ✕ Delete
-                </button>
-              </form>
+                {% endif %}
+                <!-- Delete button -->
+                <form method="POST" action="/retailers/{{ r.id }}/delete" class="inline"
+                      data-name="{{ r.name }}"
+                      onsubmit="return confirm('Delete ' + this.dataset.name + '? This will remove all products from this retailer. This cannot be undone.')">
+                  <button type="submit"
+                          class="text-xs text-neutral-400 hover:text-red-400 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 hover:bg-red-500/10 px-2.5 py-1 rounded transition-colors"
+                          title="Delete retailer">
+                    ✕ Delete
+                  </button>
+                </form>
+              </div>
             </div>
+            <!-- Discovery progress area -->
+            <div id="discover-progress-{{ r.id }}" class="hidden mt-2"></div>
           </div>
         </div>
         {% endfor %}
@@ -210,4 +214,122 @@
   </div>
 </div>
 {% endfor %}
+
+<script>
+function startDiscovery(retailerId) {
+  var btn = document.getElementById('discover-btn-' + retailerId);
+  var progressDiv = document.getElementById('discover-progress-' + retailerId);
+
+  // Disable button and show starting state
+  btn.disabled = true;
+  btn.classList.add('opacity-50', 'cursor-not-allowed');
+  btn.textContent = '↻ Starting...';
+
+  // Fire POST to start discovery
+  fetch('/retailers/' + retailerId + '/discover', {
+    method: 'POST',
+  })
+  .then(function(resp) { return resp.json(); })
+  .then(function(data) {
+    if (data.status === 'already_running' || data.status === 'started') {
+      // Hide button, show progress area
+      btn.classList.add('hidden');
+      progressDiv.classList.remove('hidden');
+      progressDiv.innerHTML = '<span class="text-xs text-neutral-500">Connecting...</span>';
+
+      // Open SSE connection
+      var evtSource = new EventSource('/retailers/' + retailerId + '/discover-progress');
+
+      evtSource.onmessage = function(event) {
+        var progress = JSON.parse(event.data);
+
+        if (progress.status === 'idle') {
+          evtSource.close();
+          resetButton(retailerId);
+          return;
+        }
+
+        if (progress.status === 'running') {
+          var pct = progress.brands_total > 0
+            ? Math.round((progress.brands_done / progress.brands_total) * 100)
+            : 0;
+
+          progressDiv.innerHTML =
+            '<div class="flex flex-col gap-1.5">' +
+              '<div class="flex items-center justify-between">' +
+                '<div class="flex items-center gap-2">' +
+                  '<span class="inline-block animate-spin text-green-400 text-xs">↻</span>' +
+                  '<span class="text-xs text-neutral-300">' +
+                    progress.brands_done + '/' + progress.brands_total + ' brands' +
+                  '</span>' +
+                '</div>' +
+                (progress.products_found > 0
+                  ? '<span class="text-[10px] text-green-400">' + progress.products_found + ' found</span>'
+                  : '') +
+              '</div>' +
+              '<div class="w-full bg-neutral-800 rounded-full h-1.5 overflow-hidden">' +
+                '<div class="bg-green-500 h-1.5 rounded-full transition-all duration-500 ease-out" style="width: ' + pct + '%"></div>' +
+              '</div>' +
+              '<span class="text-[10px] text-neutral-500 truncate">' +
+                (progress.current_brand ? 'Searching ' + progress.current_brand + '...' : '') +
+              '</span>' +
+            '</div>';
+        }
+
+        if (progress.status === 'done') {
+          evtSource.close();
+          progressDiv.innerHTML =
+            '<div class="flex items-center gap-2 py-0.5">' +
+              '<span class="text-xs text-green-400">&#10003; ' + progress.message + '</span>' +
+            '</div>';
+
+          // Auto-fade after 8 seconds, then restore button
+          setTimeout(function() {
+            progressDiv.style.transition = 'opacity 0.5s';
+            progressDiv.style.opacity = '0';
+            setTimeout(function() {
+              resetButton(retailerId);
+            }, 500);
+          }, 8000);
+        }
+
+        if (progress.status === 'error') {
+          evtSource.close();
+          progressDiv.innerHTML =
+            '<div class="flex items-center gap-2 py-0.5">' +
+              '<span class="text-xs text-red-400">&#10007; ' + progress.message + '</span>' +
+            '</div>';
+          setTimeout(function() { resetButton(retailerId); }, 10000);
+        }
+      };
+
+      evtSource.onerror = function() {
+        evtSource.close();
+        progressDiv.innerHTML =
+          '<span class="text-xs text-red-400">Connection lost</span>';
+        setTimeout(function() { resetButton(retailerId); }, 5000);
+      };
+    }
+  })
+  .catch(function(err) {
+    console.error('Discovery start failed:', err);
+    btn.disabled = false;
+    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    btn.textContent = '↻ Re-discover';
+  });
+}
+
+function resetButton(retailerId) {
+  var btn = document.getElementById('discover-btn-' + retailerId);
+  var progressDiv = document.getElementById('discover-progress-' + retailerId);
+
+  btn.classList.remove('hidden', 'opacity-50', 'cursor-not-allowed');
+  btn.disabled = false;
+  btn.textContent = '↻ Re-discover';
+
+  progressDiv.classList.add('hidden');
+  progressDiv.style.opacity = '1';
+  progressDiv.innerHTML = '';
+}
+</script>
 {% endblock %}
