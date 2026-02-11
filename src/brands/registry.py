@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.models import Brand, BrandRetailer, Retailer
 
 logger = logging.getLogger(__name__)
+
+
+async def _fetch_prod_data(prod_url: str) -> dict:
+    """Fetch brands and retailers from the live prod instance via /api/export.
+
+    This 'rescues' any brands/retailers added via the UI before the DB is wiped
+    on Render free tier deploys. Returns empty dict on failure (non-blocking).
+    """
+    import httpx
+
+    export_url = f"{prod_url.rstrip('/')}/api/export"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(export_url)
+            if resp.status_code == 200:
+                data = resp.json()
+                logger.info(
+                    f"Auto-rescue: fetched {len(data.get('brands', []))} brands, "
+                    f"{len(data.get('retailers', []))} retailers from prod"
+                )
+                return data
+            else:
+                logger.warning(f"Auto-rescue: /api/export returned {resp.status_code}")
+    except Exception:
+        logger.warning("Auto-rescue: could not reach prod instance (may be first deploy)")
+    return {}
 
 INITIAL_BRANDS = [
     {
@@ -202,14 +229,33 @@ INITIAL_RETAILERS = [
 ]
 
 
-async def seed_brands(session: AsyncSession) -> None:
+async def seed_brands(
+    session: AsyncSession, extra_brands: list[dict] | None = None
+) -> None:
     """Upsert seed brands — add missing ones by slug, never delete existing.
 
+    Merges hardcoded INITIAL_BRANDS with any extra brands (e.g. from prod rescue).
     This ensures all expected brands exist after a DB wipe (Render free tier)
-    while preserving any brands added via the UI that aren't in this list.
+    while preserving any brands added via the UI.
     """
+    # Merge: hardcoded list first, then extras (dedup by slug)
+    all_brands = list(INITIAL_BRANDS)
+    seen_slugs = {b["slug"] for b in all_brands}
+    for eb in extra_brands or []:
+        slug = eb.get("slug") or re.sub(r"[^a-z0-9]+", "-", eb["name"].lower()).strip("-")
+        if slug not in seen_slugs:
+            # Convert prod export format to seed format
+            all_brands.append({
+                "name": eb["name"],
+                "slug": slug,
+                "aliases": json.dumps(eb.get("aliases", [])) if isinstance(eb.get("aliases"), list) else eb.get("aliases", ""),
+                "category": eb.get("category", ""),
+                "alert_threshold_pct": eb.get("alert_threshold_pct", 10.0),
+            })
+            seen_slugs.add(slug)
+
     added = 0
-    for brand_data in INITIAL_BRANDS:
+    for brand_data in all_brands:
         existing = await session.execute(
             select(Brand).where(Brand.slug == brand_data["slug"])
         )
@@ -224,14 +270,33 @@ async def seed_brands(session: AsyncSession) -> None:
         logger.info("All seed brands already exist — nothing to add")
 
 
-async def seed_retailers(session: AsyncSession) -> None:
+async def seed_retailers(
+    session: AsyncSession, extra_retailers: list[dict] | None = None
+) -> None:
     """Upsert seed retailers — add missing ones by slug, never delete existing.
 
+    Merges hardcoded INITIAL_RETAILERS with any extra retailers (e.g. from prod rescue).
     This ensures all expected retailers exist after a DB wipe (Render free tier)
-    while preserving any retailers added via the UI that aren't in this list.
+    while preserving any retailers added via the UI.
     """
+    # Merge: hardcoded list first, then extras (dedup by slug)
+    all_retailers = list(INITIAL_RETAILERS)
+    seen_slugs = {r["slug"] for r in all_retailers}
+    for er in extra_retailers or []:
+        slug = er.get("slug") or re.sub(r"[^a-z0-9]+", "-", er["name"].lower()).strip("-")
+        if slug not in seen_slugs:
+            # Convert prod export format to seed format
+            all_retailers.append({
+                "name": er["name"],
+                "slug": slug,
+                "base_url": er.get("base_url", ""),
+                "scraper_type": er.get("scraper_type", "generic"),
+                "requires_js": er.get("requires_js", False),
+            })
+            seen_slugs.add(slug)
+
     added = 0
-    for retailer_data in INITIAL_RETAILERS:
+    for retailer_data in all_retailers:
         existing = await session.execute(
             select(Retailer).where(Retailer.slug == retailer_data["slug"])
         )
@@ -247,8 +312,20 @@ async def seed_retailers(session: AsyncSession) -> None:
 
 
 async def seed_all(session: AsyncSession) -> None:
-    await seed_brands(session)
-    await seed_retailers(session)
+    """Seed brands and retailers, rescuing any UI-added data from prod first."""
+    from src.config import settings
+
+    # If running on Render, fetch current prod data before seeding
+    # This preserves brands/retailers added via the UI that aren't in the hardcoded lists
+    prod_brands: list[dict] = []
+    prod_retailers: list[dict] = []
+    if settings.RENDER_EXTERNAL_URL:
+        prod_data = await _fetch_prod_data(settings.RENDER_EXTERNAL_URL)
+        prod_brands = prod_data.get("brands", [])
+        prod_retailers = prod_data.get("retailers", [])
+
+    await seed_brands(session, extra_brands=prod_brands)
+    await seed_retailers(session, extra_retailers=prod_retailers)
 
 
 async def get_brand_aliases(brand: Brand) -> list[str]:
