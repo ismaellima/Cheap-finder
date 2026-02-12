@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{% if query %}Search: {{ query }}{% else %}Search{% endif %} — Cheap Finder{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Search Results</h1>
+  {% if query %}
+  <p class="text-sm text-neutral-500 mt-1">{{ total_products }} result{{ 's' if total_products != 1 else '' }} for "{{ query }}"</p>
+  {% else %}
+  <p class="text-sm text-neutral-500 mt-1">Enter a search term to find products</p>
+  {% endif %}
+</div>
+
+{% if products %}
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+  {% for product in products %}
+  <div>
+    {% include "components/product_card.html" %}
+  </div>
+  {% endfor %}
+</div>
+
+{% include "components/pagination.html" %}
+{% else %}
+<div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-12 text-center">
+  <svg class="w-12 h-12 mx-auto mb-3 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+  </svg>
+  {% if query %}
+  <p class="text-neutral-500 text-sm">No products found for "{{ query }}".</p>
+  <p class="text-neutral-600 text-xs mt-2">Try a different search term or browse brands from the <a href="/" class="text-green-500 hover:text-green-400">dashboard</a>.</p>
+  {% else %}
+  <p class="text-neutral-500 text-sm">Use the search bar above to find products across all brands and retailers.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

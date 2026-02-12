@@ -481,6 +481,68 @@ async def discover_brand(request: Request, brand_id: int):
     )
 
 
+@router.get("/search")
+async def search_products(
+    request: Request,
+    q: str = "",
+    page: int = 1,
+    per_page: int = 40,
+    session: AsyncSession = Depends(get_session),
+):
+    """Global product search across all brands and retailers."""
+    products = []
+    total_products = 0
+    total_pages = 1
+
+    if q.strip():
+        search_term = q.strip()
+        query = (
+            select(Product)
+            .join(Brand, Product.brand_id == Brand.id)
+            .options(selectinload(Product.brand), selectinload(Product.retailer))
+            .where(
+                Product.name.ilike(f"%{search_term}%")
+                | Brand.name.ilike(f"%{search_term}%")
+            )
+            .order_by(Product.current_price.asc().nullslast())
+        )
+
+        count_q = select(func.count()).select_from(query.subquery())
+        total_products = (await session.execute(count_q)).scalar() or 0
+
+        total_pages = max(1, (total_products + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+
+        products_result = await session.execute(
+            query.offset((page - 1) * per_page).limit(per_page)
+        )
+        products = products_result.scalars().all()
+
+    unread_result = await session.execute(
+        select(func.count(Notification.id)).where(Notification.read.is_(False))
+    )
+    unread_count = unread_result.scalar() or 0
+
+    return templates.TemplateResponse(
+        "search_results.html",
+        {
+            "request": request,
+            "products": products,
+            "query": q.strip(),
+            "total_products": total_products,
+            "page": page,
+            "total_pages": total_pages,
+            "per_page": per_page,
+            "current_q": q.strip(),
+            "current_gender": "",
+            "current_sort": "",
+            "unread_count": unread_count,
+            "format_price": format_price,
+            "is_admin": _is_admin(request),
+        },
+    )
+
+
 @router.get("/brands/{brand_id}")
 async def brand_detail(
     request: Request,
@@ -488,6 +550,11 @@ async def brand_detail(
     session: AsyncSession = Depends(get_session),
     success: str = "",
     error: str = "",
+    page: int = 1,
+    per_page: int = 40,
+    q: str = "",
+    gender: str = "",
+    sort: str = "price-asc",
 ):
     brand = await session.get(Brand, brand_id)
     if not brand:
@@ -497,13 +564,53 @@ async def brand_detail(
             status_code=404,
         )
 
-    products_result = await session.execute(
+    # Build dynamic query with filters
+    query = (
         select(Product)
         .where(Product.brand_id == brand_id)
         .options(selectinload(Product.retailer))
-        .order_by(Product.current_price.asc().nullslast())
     )
+
+    if q.strip():
+        query = query.where(Product.name.ilike(f"%{q.strip()}%"))
+
+    if gender and gender != "all":
+        query = query.where(Product.gender == gender)
+
+    # Sort
+    if sort == "price-desc":
+        query = query.order_by(Product.current_price.desc().nullslast())
+    elif sort == "name-asc":
+        query = query.order_by(Product.name.asc())
+    elif sort == "name-desc":
+        query = query.order_by(Product.name.desc())
+    else:  # default: price-asc
+        query = query.order_by(Product.current_price.asc().nullslast())
+
+    # Count total for pagination
+    count_q = select(func.count()).select_from(query.subquery())
+    total_products = (await session.execute(count_q)).scalar() or 0
+
+    total_pages = max(1, (total_products + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * per_page
+
+    products_result = await session.execute(query.offset(offset).limit(per_page))
     products = products_result.scalars().all()
+
+    # Check if any products for this brand have gender data (for showing filter)
+    gender_check = await session.execute(
+        select(func.count()).where(
+            Product.brand_id == brand_id,
+            Product.gender.isnot(None),
+            Product.gender != "",
+        )
+    )
+    has_gender_data = (gender_check.scalar() or 0) > 0
+
+    # Compute cheapest product IDs for "Best Price" badges
+    from src.tracking.comparison import compute_cheapest_ids
+    cheapest_ids = compute_cheapest_ids(products, brand.name)
 
     # Linked retailers with stats
     retailer_stats_q = (
@@ -566,6 +673,15 @@ async def brand_detail(
             "success_message": brand_success_messages.get(success, ""),
             "error_message": brand_error_messages.get(error, ""),
             "is_admin": _is_admin(request),
+            "page": page,
+            "total_pages": total_pages,
+            "total_products": total_products,
+            "per_page": per_page,
+            "current_q": q,
+            "current_gender": gender,
+            "current_sort": sort,
+            "has_gender_data": has_gender_data,
+            "cheapest_ids": cheapest_ids,
         },
     )
 
@@ -587,8 +703,10 @@ async def product_detail(
         )
 
     from src.tracking.history import get_price_trend
+    from src.tracking.comparison import find_similar_products
 
     trend = await get_price_trend(session, product_id)
+    similar_products = await find_similar_products(session, product)
 
     unread_result = await session.execute(
         select(func.count(Notification.id)).where(Notification.read.is_(False))
@@ -601,9 +719,75 @@ async def product_detail(
             "request": request,
             "product": product,
             "trend": trend,
+            "similar_products": similar_products,
             "unread_count": unread_count,
             "format_price": format_price,
             "is_admin": _is_admin(request),
+        },
+    )
+
+
+@router.get("/wishlist")
+async def wishlist_page(
+    request: Request, session: AsyncSession = Depends(get_session)
+):
+    """Wishlist page — products are loaded client-side via HTMX."""
+    unread_result = await session.execute(
+        select(func.count(Notification.id)).where(Notification.read.is_(False))
+    )
+    unread_count = unread_result.scalar() or 0
+
+    return templates.TemplateResponse(
+        "wishlist.html",
+        {
+            "request": request,
+            "unread_count": unread_count,
+            "format_price": format_price,
+            "is_admin": _is_admin(request),
+        },
+    )
+
+
+@router.get("/wishlist/products")
+async def wishlist_products_partial(
+    request: Request,
+    ids: str = "",
+    session: AsyncSession = Depends(get_session),
+):
+    """Return HTML partial of product cards for given product IDs."""
+    id_list = []
+    for x in ids.split(","):
+        x = x.strip()
+        if x.isdigit():
+            id_list.append(int(x))
+    id_list = id_list[:200]  # safety limit
+
+    if not id_list:
+        return templates.TemplateResponse(
+            "components/wishlist_empty.html",
+            {"request": request},
+        )
+
+    result = await session.execute(
+        select(Product)
+        .where(Product.id.in_(id_list))
+        .options(selectinload(Product.brand), selectinload(Product.retailer))
+        .order_by(Product.current_price.asc().nullslast())
+    )
+    products = result.scalars().all()
+
+    if not products:
+        return templates.TemplateResponse(
+            "components/wishlist_empty.html",
+            {"request": request},
+        )
+
+    return templates.TemplateResponse(
+        "components/wishlist_grid.html",
+        {
+            "request": request,
+            "products": products,
+            "format_price": format_price,
         },
     )
 

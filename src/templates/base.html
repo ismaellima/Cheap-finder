@@ -97,6 +97,60 @@
 
     // Init theme
     setTheme(getTheme());
+
+    // Wishlist management (localStorage-based)
+    function getWishlist() {
+      try { return JSON.parse(localStorage.getItem('cf_wishlist') || '[]'); }
+      catch(e) { return []; }
+    }
+
+    function isInWishlist(productId) {
+      return getWishlist().includes(productId);
+    }
+
+    function toggleWishlist(productId, event) {
+      if (event) { event.preventDefault(); event.stopPropagation(); }
+      var list = getWishlist();
+      var idx = list.indexOf(productId);
+      if (idx >= 0) { list.splice(idx, 1); } else { list.push(productId); }
+      localStorage.setItem('cf_wishlist', JSON.stringify(list));
+      // Update heart icons
+      document.querySelectorAll('[data-wishlist-id="' + productId + '"]').forEach(function(el) {
+        if (list.includes(productId)) {
+          el.classList.add('text-red-500');
+          el.classList.remove('text-neutral-600');
+        } else {
+          el.classList.remove('text-red-500');
+          el.classList.add('text-neutral-600');
+        }
+      });
+      updateWishlistBadge();
+      // If on wishlist page, refresh the grid
+      var wc = document.getElementById('wishlist-container');
+      if (wc) {
+        htmx.ajax('GET', '/wishlist/products', {target: '#wishlist-container', swap: 'innerHTML', values: {ids: getWishlist().join(',')}});
+      }
+    }
+
+    function updateWishlistBadge() {
+      var count = getWishlist().length;
+      document.querySelectorAll('.wishlist-count-badge').forEach(function(badge) {
+        badge.textContent = count;
+        badge.style.display = count > 0 ? 'flex' : 'none';
+      });
+    }
+
+    // On page load, mark wishlisted items and update badge
+    document.addEventListener('DOMContentLoaded', function() {
+      var list = getWishlist();
+      list.forEach(function(id) {
+        document.querySelectorAll('[data-wishlist-id="' + id + '"]').forEach(function(el) {
+          el.classList.add('text-red-500');
+          el.classList.remove('text-neutral-600');
+        });
+      });
+      updateWishlistBadge();
+    });
   </script>
 </body>
 </html>

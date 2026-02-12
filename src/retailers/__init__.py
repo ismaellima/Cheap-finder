@@ -13,6 +13,7 @@ from src.retailers.altitude_sports import AltitudeSportsScraper
 from src.retailers.sporting_life import SportingLifeScraper
 from src.retailers.nordstrom import NordstromScraper
 from src.retailers.bluebuttonshop import BlueButtonShopScraper
+from src.retailers.the_last_hunt import TheLastHuntScraper
 
 
 
@@ -28,6 +29,7 @@ def get_scraper_classes() -> Dict[str, Type[RetailerBase]]:
         "sporting_life": SportingLifeScraper,
         "nordstrom": NordstromScraper,
         "bluebuttonshop": BlueButtonShopScraper,
+        "the_last_hunt": TheLastHuntScraper,
         "generic": GenericScraper,
     }
 

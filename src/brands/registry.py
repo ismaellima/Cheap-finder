@@ -319,6 +319,13 @@ INITIAL_RETAILERS = [
         "requires_js": False,
     },
     {
+        "name": "The last hunt",
+        "slug": "the-last-hunt",
+        "base_url": "https://www.thelasthunt.com",
+        "scraper_type": "the_last_hunt",
+        "requires_js": False,
+    },
+    {
         "name": "TNT",
         "slug": "tnt",
         "base_url": "https://tntfashion.ca",
@@ -402,17 +409,32 @@ async def seed_retailers(
             seen_slugs.add(slug)
 
     added = 0
+    updated = 0
     for retailer_data in all_retailers:
         existing = await session.execute(
             select(Retailer).where(Retailer.slug == retailer_data["slug"])
         )
-        if existing.scalar_one_or_none() is None:
+        retailer = existing.scalar_one_or_none()
+        if retailer is None:
             session.add(Retailer(**retailer_data))
             logger.info(f"Seeded retailer: {retailer_data['name']}")
             added += 1
-    if added:
+        else:
+            # Update scraper_type if it changed (e.g. generic → dedicated scraper)
+            new_type = retailer_data.get("scraper_type", "generic")
+            if retailer.scraper_type != new_type and new_type != "generic":
+                logger.info(
+                    f"Updated {retailer.name} scraper_type: "
+                    f"{retailer.scraper_type} → {new_type}"
+                )
+                retailer.scraper_type = new_type
+                updated += 1
+    if added or updated:
         await session.commit()
-        logger.info(f"Seeded {added} new retailers")
+        if added:
+            logger.info(f"Seeded {added} new retailers")
+        if updated:
+            logger.info(f"Updated {updated} retailer scraper types")
     else:
         logger.info("All seed retailers already exist — nothing to add")
 

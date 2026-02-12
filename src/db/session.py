@@ -89,6 +89,27 @@ def _ensure_columns(conn) -> None:
                 logger.info(f"Auto-migration: added column {table.name}.{col.name} ({col_type})")
 
 
+def _remove_kids_products(conn) -> None:
+    """Remove kids/youth products and their price records from the DB."""
+    patterns = [
+        "%kids%", "%kid's%", "%youth%", "%junior%", "%toddler%",
+        "%infant%", "%baby%", "%boy's%", "%boys'%", "%girl's%",
+        "%girls'%", "%enfant%", "%enfants%",
+        "%little kids%", "%big kids%", "%grade school%", "%preschool%",
+    ]
+    # Build parameterized conditions to avoid SQL injection / quote issues
+    conditions = " OR ".join(f"LOWER(name) LIKE :p{i}" for i in range(len(patterns)))
+    params = {f"p{i}": p for i, p in enumerate(patterns)}
+    # Delete price records first (FK constraint)
+    conn.execute(text(
+        f"DELETE FROM price_records WHERE product_id IN "
+        f"(SELECT id FROM products WHERE {conditions})"
+    ), params)
+    result = conn.execute(text(f"DELETE FROM products WHERE {conditions}"), params)
+    if result.rowcount:
+        logger.info(f"Removed {result.rowcount} kids/youth products from DB")
+
+
 def _fix_product_urls(conn) -> None:
     """One-time fixups for product URLs with wrong path patterns."""
     # Altitude Sports: /products/ → /p/ (correct path prefix)
@@ -113,6 +134,8 @@ async def init_db() -> None:
         await conn.run_sync(_ensure_columns)
         # Fix any product URLs with wrong path patterns
         await conn.run_sync(_fix_product_urls)
+        # Remove kids/youth products that slipped in before the filter
+        await conn.run_sync(_remove_kids_products)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

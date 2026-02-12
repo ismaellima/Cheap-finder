@@ -1,0 +1,14 @@
+<!-- Wishlist product grid (HTMX partial) -->
+<div class="flex items-center justify-between mb-4">
+  <p class="text-sm text-neutral-500">{{ products | length }} saved product{{ 's' if products | length != 1 else '' }}</p>
+  <button onclick="if(confirm('Clear your entire wishlist?')){localStorage.removeItem('cf_wishlist');updateWishlistBadge();htmx.ajax('GET','/wishlist/products',{target:'#wishlist-container',swap:'innerHTML',values:{ids:''}});}"
+          class="text-xs text-neutral-600 hover:text-red-500 transition-colors">
+    Clear all
+  </button>
+</div>
+
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+  {% for product in products %}
+    {% include "components/product_card.html" %}
+  {% endfor %}
+</div>

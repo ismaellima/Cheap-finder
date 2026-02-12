@@ -14,6 +14,22 @@ from src.retailers.base import RetailerBase, ScrapedProduct
 logger = logging.getLogger(__name__)
 
 
+_KIDS_KEYWORDS = [
+    "kids", "kid's", "youth", "junior", "jr.", "jr ",
+    "toddler", "infant", "baby", "boy's", "boys'",
+    "girl's", "girls'", "enfant", "enfants", "bébé",
+    "bebe", "garçon", "garcon", "fille", "bambin",
+    "little kids", "big kids", "grade school", "preschool",
+    " gs", " td", " ps",  # sneaker size codes (grade school, toddler, preschool)
+]
+
+
+def _is_kids_product(name: str) -> bool:
+    """Check if a product name indicates a kids/youth item."""
+    lower = name.lower()
+    return any(kw in lower for kw in _KIDS_KEYWORDS)
+
+
 def _normalize(name: str) -> str:
     """Normalize a brand name for fuzzy comparison.
 
@@ -151,6 +167,10 @@ async def store_scraped_products(
 
     for sp in scraped:
         if not sp.url:
+            continue
+
+        if _is_kids_product(sp.name):
+            logger.debug(f"Skipping kids product: {sp.name}")
             continue
 
         # Check if product already exists (by URL)
