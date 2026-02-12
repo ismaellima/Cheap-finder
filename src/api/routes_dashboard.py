@@ -248,6 +248,7 @@ async def edit_brand_submit(
     alert_threshold_pct: float = Form(10.0),
     session: AsyncSession = Depends(get_session),
 ):
+    logger.info(f"Edit brand {brand_id}: name={name!r}, aliases={aliases!r}, category={category!r}")
     brand = await session.get(Brand, brand_id)
     if not brand:
         return RedirectResponse("/?error=brand_not_found", status_code=HTTP_303_SEE_OTHER)
@@ -284,8 +285,14 @@ async def edit_brand_submit(
         brand.slug = slug
 
     # Parse aliases from comma-separated string
-    alias_list = [a.strip() for a in aliases.split(",") if a.strip()]
+    # Handle None, empty string, or whitespace-only input
+    aliases_input = (aliases or "").strip()
+    if aliases_input:
+        alias_list = [a.strip() for a in aliases_input.split(",") if a.strip()]
+    else:
+        alias_list = []
     brand.aliases = json.dumps(alias_list)
+    logger.info(f"Setting aliases for brand {brand.name}: {alias_list}")
 
     brand.category = category.strip()
     brand.alert_threshold_pct = alert_threshold_pct
@@ -302,7 +309,8 @@ async def edit_brand_submit(
         alert_rule.threshold_pct = alert_threshold_pct
 
     await session.commit()
-    logger.info(f"Brand updated: {brand.name} (id={brand_id})")
+    await session.refresh(brand)
+    logger.info(f"Brand updated: {brand.name} (id={brand_id}), aliases={brand.aliases}")
 
     return RedirectResponse(
         f"/brands/{brand_id}?success=brand_updated",
@@ -660,6 +668,13 @@ async def brand_detail(
         "brand_slug_taken": "A brand with a similar name already exists.",
     }
 
+    # Parse aliases safely
+    try:
+        aliases = json.loads(brand.aliases) if brand.aliases and brand.aliases != "" else []
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(f"Invalid aliases JSON for brand {brand.id}: {brand.aliases!r}")
+        aliases = []
+
     return templates.TemplateResponse(
         "brand_detail.html",
         {
@@ -667,7 +682,7 @@ async def brand_detail(
             "brand": brand,
             "products": products,
             "linked_retailers": linked_retailers,
-            "aliases": json.loads(brand.aliases) if brand.aliases else [],
+            "aliases": aliases,
             "unread_count": unread_count,
             "format_price": format_price,
             "success_message": brand_success_messages.get(success, ""),
