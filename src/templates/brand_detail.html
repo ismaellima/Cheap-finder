@@ -76,7 +76,7 @@
   <!-- Clickable accordion header button -->
   <button type="button"
           onclick="toggleRetailersAccordion()"
-          class="w-full flex items-center justify-between mb-4 group"
+          class="flex items-center gap-2 mb-4 group"
           aria-expanded="false"
           aria-controls="retailers-grid-container">
     <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider group-hover:text-green-400 transition-colors">
@@ -254,7 +254,6 @@
   </div>
 </div>
 {% endif %}
-{% endblock %}
 
 <script>
   function toggleRetailersAccordion() {
@@ -297,3 +296,5 @@
     }
   });
 </script>
+
+{% endblock %}
