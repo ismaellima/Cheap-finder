@@ -73,43 +73,61 @@
 
 <!-- Tracked Retailers -->
 <section class="mb-8">
-  <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-4">
-    Tracked Retailers ({{ linked_retailers | length }})
-  </h2>
+  <!-- Clickable accordion header button -->
+  <button type="button"
+          onclick="toggleRetailersAccordion()"
+          class="w-full flex items-center justify-between mb-4 group"
+          aria-expanded="false"
+          aria-controls="retailers-grid-container">
+    <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider group-hover:text-green-400 transition-colors">
+      Tracked Retailers ({{ linked_retailers | length }})
+    </h2>
+    <!-- Chevron icon (points down when collapsed, up when expanded) -->
+    <svg id="retailers-chevron"
+         class="w-4 h-4 text-neutral-500 group-hover:text-green-400 transition-all duration-200 transform"
+         fill="none"
+         stroke="currentColor"
+         viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+    </svg>
+  </button>
 
-  {% if linked_retailers %}
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-    {% for r in linked_retailers %}
-    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
-      <div class="flex items-center justify-between mb-2">
-        <div class="flex items-center gap-2">
-          <div class="w-2 h-2 rounded-full {% if r.active %}bg-green-500{% else %}bg-neutral-600{% endif %}"></div>
-          <a href="{{ r.base_url }}" target="_blank" rel="noopener noreferrer"
-             class="text-sm font-medium text-white dark:text-white light:text-neutral-900 hover:text-green-500 transition-colors">
-            {{ r.name }}
-          </a>
+  <!-- Collapsible container (hidden by default) -->
+  <div id="retailers-grid-container" class="hidden">
+    {% if linked_retailers %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {% for r in linked_retailers %}
+      <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full {% if r.active %}bg-green-500{% else %}bg-neutral-600{% endif %}"></div>
+            <a href="{{ r.base_url }}" target="_blank" rel="noopener noreferrer"
+               class="text-sm font-medium text-white dark:text-white light:text-neutral-900 hover:text-green-500 transition-colors">
+              {{ r.name }}
+            </a>
+          </div>
+          {% if r.verified %}
+          <span class="text-[10px] font-medium text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded uppercase">Verified</span>
+          {% endif %}
         </div>
-        {% if r.verified %}
-        <span class="text-[10px] font-medium text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded uppercase">Verified</span>
-        {% endif %}
+        <div class="flex items-center gap-4 text-xs text-neutral-500">
+          <span>{{ r.product_count }} product{{ 's' if r.product_count != 1 else '' }}</span>
+          {% if r.last_checked %}
+          <span>Checked {{ r.last_checked.strftime('%b %d, %H:%M') }}</span>
+          {% else %}
+          <span>Never checked</span>
+          {% endif %}
+        </div>
       </div>
-      <div class="flex items-center gap-4 text-xs text-neutral-500">
-        <span>{{ r.product_count }} product{{ 's' if r.product_count != 1 else '' }}</span>
-        {% if r.last_checked %}
-        <span>Checked {{ r.last_checked.strftime('%b %d, %H:%M') }}</span>
-        {% else %}
-        <span>Never checked</span>
-        {% endif %}
-      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
+    {% else %}
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-6 text-center">
+      <p class="text-neutral-500 text-sm">No retailers linked to this brand yet.</p>
+      <p class="text-neutral-600 text-xs mt-1">Retailers are linked when scrapers discover products, or you can <a href="/suggest-retailer" class="text-green-500 hover:text-green-400">suggest a new retailer</a>.</p>
+    </div>
+    {% endif %}
   </div>
-  {% else %}
-  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-6 text-center">
-    <p class="text-neutral-500 text-sm">No retailers linked to this brand yet.</p>
-    <p class="text-neutral-600 text-xs mt-1">Retailers are linked when scrapers discover products, or you can <a href="/suggest-retailer" class="text-green-500 hover:text-green-400">suggest a new retailer</a>.</p>
-  </div>
-  {% endif %}
 </section>
 
 <!-- Products grid -->
@@ -237,3 +255,45 @@
 </div>
 {% endif %}
 {% endblock %}
+
+<script>
+  function toggleRetailersAccordion() {
+    const container = document.getElementById('retailers-grid-container');
+    const chevron = document.getElementById('retailers-chevron');
+    const button = document.querySelector('[aria-controls="retailers-grid-container"]');
+
+    const isHidden = container.classList.contains('hidden');
+
+    if (isHidden) {
+      // Expand
+      container.classList.remove('hidden');
+      chevron.classList.add('rotate-180');
+      button.setAttribute('aria-expanded', 'true');
+      localStorage.setItem('cf_retailers_accordion', 'expanded');
+    } else {
+      // Collapse
+      container.classList.add('hidden');
+      chevron.classList.remove('rotate-180');
+      button.setAttribute('aria-expanded', 'false');
+      localStorage.setItem('cf_retailers_accordion', 'collapsed');
+    }
+  }
+
+  // Initialize accordion state on page load
+  document.addEventListener('DOMContentLoaded', function() {
+    const savedState = localStorage.getItem('cf_retailers_accordion') || 'collapsed';
+
+    if (savedState === 'expanded') {
+      // Restore expanded state
+      const container = document.getElementById('retailers-grid-container');
+      const chevron = document.getElementById('retailers-chevron');
+      const button = document.querySelector('[aria-controls="retailers-grid-container"]');
+
+      if (container && chevron && button) {
+        container.classList.remove('hidden');
+        chevron.classList.add('rotate-180');
+        button.setAttribute('aria-expanded', 'true');
+      }
+    }
+  });
+</script>
