@@ -49,6 +49,9 @@ def _brand_matches(
     If the scraper didn't return a brand name (empty string), we assume
     it matches (collection-scoped scrapers like Shopify already filter).
 
+    For compound brands (containing spaces), only exact matches are allowed
+    to prevent false positives like "Nike" matching "Nike ACG".
+
     Otherwise we compare the scraped brand against the brand name and
     all its aliases using normalized fuzzy matching.
     """
@@ -69,11 +72,17 @@ def _brand_matches(
     if norm_scraped in acceptable:
         return True
 
-    # Substring match — only for names >= 4 chars to avoid false positives
-    # (e.g. "on" matching "salm-on", "nb" matching "bnb")
-    for name in acceptable:
-        if name and len(name) >= 4 and (name in norm_scraped or norm_scraped in name):
-            return True
+    # Substring match ONLY for single-word brands (no spaces in original)
+    # This prevents "Nike" from matching "Nike ACG"
+    has_compound_name = any(" " in s for s in [brand_name] + aliases)
+
+    if not has_compound_name:
+        # Allow fuzzy substring matching for single-word brands
+        # Only for names >= 4 chars to avoid false positives
+        # (e.g. "on" matching "salm-on", "nb" matching "bnb")
+        for name in acceptable:
+            if name and len(name) >= 4 and (name in norm_scraped or norm_scraped in name):
+                return True
 
     return False
 
