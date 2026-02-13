@@ -28,6 +28,7 @@ from src.db.models import (
     RetailerSuggestion,
 )
 from src.db.session import async_session, get_session
+from src.brands.rematch import rematch_brand_products, trigger_rediscovery
 
 logger = logging.getLogger(__name__)
 
@@ -286,11 +287,16 @@ async def edit_brand_submit(
 
     # Parse aliases from comma-separated string
     # Handle None, empty string, or whitespace-only input
+    old_aliases = json.loads(brand.aliases) if brand.aliases else []
+
     aliases_input = (aliases or "").strip()
     if aliases_input:
         alias_list = [a.strip() for a in aliases_input.split(",") if a.strip()]
     else:
         alias_list = []
+
+    aliases_changed = set(old_aliases) != set(alias_list)
+
     brand.aliases = json.dumps(alias_list)
     logger.info(f"Setting aliases for brand {brand.name}: {alias_list}")
 
@@ -312,8 +318,36 @@ async def edit_brand_submit(
     await session.refresh(brand)
     logger.info(f"Brand updated: {brand.name} (id={brand_id}), aliases={brand.aliases}")
 
+    # Re-match products if aliases changed
+    deleted_count = 0
+    if aliases_changed:
+        logger.info(
+            f"Aliases changed for {brand.name}: {old_aliases} → {alias_list}"
+        )
+
+        # Delete existing products that may not match new aliases
+        stats = await rematch_brand_products(session, brand)
+        deleted_count = stats.get("deleted", 0)
+
+        # Trigger re-discovery in background (don't wait)
+        if deleted_count > 0 or alias_list:
+            async def _safe_rediscovery():
+                try:
+                    await trigger_rediscovery(brand_id)
+                except Exception as e:
+                    logger.exception(f"Background re-discovery failed for brand {brand_id}")
+
+            asyncio.create_task(_safe_rediscovery())
+
+            logger.info(
+                f"Queued re-discovery for {brand.name} after alias change "
+                f"({deleted_count} products deleted)"
+            )
+
+    success_key = "brand_updated_rematching" if aliases_changed else "brand_updated"
+
     return RedirectResponse(
-        f"/brands/{brand_id}?success=brand_updated",
+        f"/brands/{brand_id}?success={success_key}",
         status_code=HTTP_303_SEE_OTHER,
     )
 
@@ -661,6 +695,7 @@ async def brand_detail(
     brand_success_messages = {
         "discovery_started": "Product discovery started in the background. Refresh in a few minutes to see results.",
         "brand_updated": "Brand updated successfully.",
+        "brand_updated_rematching": "Brand updated. Products are being re-discovered with new aliases. This may take a few minutes. Refresh to see results.",
     }
     brand_error_messages = {
         "brand_empty_name": "Brand name cannot be empty.",
