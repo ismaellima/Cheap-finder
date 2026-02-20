@@ -39,10 +39,10 @@ async def _fetch_prod_data(prod_url: str) -> dict:
 
 INITIAL_BRANDS = [
     {
-        "name": "A.P.C.",
-        "slug": "apc",
-        "aliases": json.dumps(["APFR", "A.P.C", "APC"]),  # Keep APFR as alias for compatibility
-        "category": "fashion",
+        "name": "APFR",
+        "slug": "apfr",
+        "aliases": json.dumps([]),  # No aliases - only match vendor="APFR" exactly
+        "category": "home",
     },
     {
         "name": "Arc'teryx",

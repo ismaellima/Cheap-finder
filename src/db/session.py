@@ -33,7 +33,7 @@ _is_sqlite = "sqlite" in _db_url
 engine = create_async_engine(
     _db_url,
     echo=False,
-    connect_args={"check_same_thread": False} if _is_sqlite else {},
+    connect_args={"check_same_thread": False} if _is_sqlite else {"statement_cache_size": 0},
 )
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
