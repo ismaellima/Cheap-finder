@@ -125,6 +125,30 @@ def _fix_product_urls(conn) -> None:
         )
 
 
+def _ensure_indexes(conn) -> None:
+    """Create any missing indexes defined in the models.
+
+    SQLAlchemy's create_all skips indexes if the table already exists.
+    This runs after create_all to fill in any gaps — safe to run repeatedly
+    (catches IntegrityError / already-exists errors silently).
+    """
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    inspector = sa_inspect(conn)
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes(table.name)}
+        for index in table.indexes:
+            if index.name and index.name not in existing_indexes:
+                try:
+                    index.create(conn)
+                    logger.info(f"Auto-migration: created index {index.name} on {table.name}")
+                except (OperationalError, ProgrammingError) as e:
+                    # Index already exists under a different name or dialect issue — skip
+                    logger.debug(f"Skipped index {index.name}: {e}")
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         if _is_sqlite:
@@ -132,6 +156,8 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
         # Add any missing columns to existing tables
         await conn.run_sync(_ensure_columns)
+        # Create any missing indexes
+        await conn.run_sync(_ensure_indexes)
         # Fix any product URLs with wrong path patterns
         await conn.run_sync(_fix_product_urls)
         # Remove kids/youth products that slipped in before the filter

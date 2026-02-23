@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -71,6 +72,8 @@ class BrandRetailer(Base):
     __tablename__ = "brand_retailers"
     __table_args__ = (
         UniqueConstraint("brand_id", "retailer_id", name="uq_brand_retailer"),
+        Index("ix_brand_retailers_brand_id", "brand_id"),
+        Index("ix_brand_retailers_retailer_id", "retailer_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -92,6 +95,9 @@ class Product(Base):
     __tablename__ = "products"
     __table_args__ = (
         UniqueConstraint("url", name="uq_product_url"),
+        Index("ix_products_brand_id", "brand_id"),
+        Index("ix_products_retailer_id", "retailer_id"),
+        Index("ix_products_on_sale", "on_sale"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -119,31 +119,43 @@ async def dashboard(
     )
     unread_count = unread_result.scalar() or 0
 
-    # Brand stats + retailer names
-    brand_stats = {}
-    brand_retailers_map = {}
-    for brand in brands:
-        count_result = await session.execute(
-            select(func.count(Product.id)).where(Product.brand_id == brand.id)
-        )
-        retailer_count = await session.execute(
-            select(func.count(BrandRetailer.id)).where(
-                BrandRetailer.brand_id == brand.id
-            )
-        )
-        brand_stats[brand.id] = {
-            "product_count": count_result.scalar() or 0,
-            "retailer_count": retailer_count.scalar() or 0,
-        }
+    # Brand stats + retailer names — bulk queries to avoid N+1
+    brand_ids = [b.id for b in brands]
 
-        # Fetch retailer names for badges
-        retailers_result = await session.execute(
-            select(Retailer.name)
-            .join(BrandRetailer, BrandRetailer.retailer_id == Retailer.id)
-            .where(BrandRetailer.brand_id == brand.id)
-            .order_by(Retailer.name)
-        )
-        brand_retailers_map[brand.id] = [r[0] for r in retailers_result.all()]
+    # Product counts per brand (one query)
+    product_counts_result = await session.execute(
+        select(Product.brand_id, func.count(Product.id).label("cnt"))
+        .where(Product.brand_id.in_(brand_ids))
+        .group_by(Product.brand_id)
+    )
+    product_counts = {row.brand_id: row.cnt for row in product_counts_result}
+
+    # Retailer counts per brand (one query)
+    retailer_counts_result = await session.execute(
+        select(BrandRetailer.brand_id, func.count(BrandRetailer.id).label("cnt"))
+        .where(BrandRetailer.brand_id.in_(brand_ids))
+        .group_by(BrandRetailer.brand_id)
+    )
+    retailer_counts = {row.brand_id: row.cnt for row in retailer_counts_result}
+
+    brand_stats = {
+        b.id: {
+            "product_count": product_counts.get(b.id, 0),
+            "retailer_count": retailer_counts.get(b.id, 0),
+        }
+        for b in brands
+    }
+
+    # Retailer names per brand (one query)
+    retailers_by_brand_result = await session.execute(
+        select(BrandRetailer.brand_id, Retailer.name)
+        .join(Retailer, BrandRetailer.retailer_id == Retailer.id)
+        .where(BrandRetailer.brand_id.in_(brand_ids))
+        .order_by(Retailer.name)
+    )
+    brand_retailers_map: dict[int, list[str]] = {b.id: [] for b in brands}
+    for row in retailers_by_brand_result:
+        brand_retailers_map[row.brand_id].append(row.name)
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -928,13 +940,14 @@ async def suggest_retailer_page(
     )
     retailers = retailers_result.scalars().all()
 
-    # Product counts per retailer
-    retailer_product_counts: dict[int, int] = {}
-    for r in retailers:
-        count_result = await session.execute(
-            select(func.count(Product.id)).where(Product.retailer_id == r.id)
-        )
-        retailer_product_counts[r.id] = count_result.scalar() or 0
+    # Product counts per retailer — single bulk query
+    retailer_ids = [r.id for r in retailers]
+    product_counts_result = await session.execute(
+        select(Product.retailer_id, func.count(Product.id).label("cnt"))
+        .where(Product.retailer_id.in_(retailer_ids))
+        .group_by(Product.retailer_id)
+    )
+    retailer_product_counts: dict[int, int] = {row.retailer_id: row.cnt for row in product_counts_result}
 
     # Sort retailers: green (working) first, yellow (pending) second, red (skipped) last
     # Within each group, sort alphabetically
