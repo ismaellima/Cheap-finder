@@ -32,7 +32,7 @@ async def fetch_export(base_url: str, password: str | None = None) -> dict:
     url = f"{base_url.rstrip('/')}/api/export-full"
     logger.info(f"Fetching {url} ...")
 
-    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
         cookies = {}
 
         # If password protected, authenticate first

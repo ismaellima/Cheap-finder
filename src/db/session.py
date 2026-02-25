@@ -30,11 +30,23 @@ def _get_database_url() -> str:
 _db_url = _get_database_url()
 _is_sqlite = "sqlite" in _db_url
 
-engine = create_async_engine(
-    _db_url,
-    echo=False,
-    connect_args={"check_same_thread": False} if _is_sqlite else {"statement_cache_size": 0},
-)
+_engine_kwargs: dict = {
+    "echo": False,
+    "connect_args": {"check_same_thread": False} if _is_sqlite else {"statement_cache_size": 0},
+}
+if not _is_sqlite:
+    # Supabase Session Pooler has a hard limit on simultaneous connections.
+    # Keep a small pool to avoid exhausting it; pre-ping on borrow to detect
+    # stale connections from Render's cold starts.
+    _engine_kwargs.update({
+        "pool_size": 5,
+        "max_overflow": 5,
+        "pool_timeout": 30,
+        "pool_recycle": 1800,
+        "pool_pre_ping": True,
+    })
+
+engine = create_async_engine(_db_url, **_engine_kwargs)
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 

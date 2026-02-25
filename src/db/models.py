@@ -130,6 +130,10 @@ class Product(Base):
 
 class PriceRecord(Base):
     __tablename__ = "price_records"
+    __table_args__ = (
+        Index("ix_price_records_product_id", "product_id"),
+        Index("ix_price_records_recorded_at", "recorded_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     product_id: Mapped[int] = mapped_column(

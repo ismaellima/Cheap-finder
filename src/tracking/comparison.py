@@ -64,6 +64,7 @@ async def find_similar_products(
             Product.current_price.isnot(None),
         )
         .options(selectinload(Product.retailer))
+        .limit(500)
     )
     candidates = result.scalars().all()
 
