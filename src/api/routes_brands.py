@@ -78,12 +78,13 @@ async def export_full(session: AsyncSession = Depends(get_session)):
     )
     products = products_result.scalars().all()
 
+    # Join price_records with products to get product_url in a single query
     prices_result = await session.execute(
-        select(PriceRecord)
-        .options(selectinload(PriceRecord.product))
+        select(PriceRecord, Product.url.label("product_url"))
+        .join(Product, PriceRecord.product_id == Product.id)
         .order_by(PriceRecord.recorded_at)
     )
-    prices = prices_result.scalars().all()
+    prices = prices_result.all()
 
     return {
         "brands": [
@@ -139,14 +140,14 @@ async def export_full(session: AsyncSession = Depends(get_session)):
         ],
         "price_records": [
             {
-                "product_url": pr.product.url,
-                "price": pr.price,
-                "original_price": pr.original_price,
-                "on_sale": pr.on_sale,
-                "currency": pr.currency,
-                "recorded_at": pr.recorded_at.isoformat() if pr.recorded_at else None,
+                "product_url": row.product_url,
+                "price": row.PriceRecord.price,
+                "original_price": row.PriceRecord.original_price,
+                "on_sale": row.PriceRecord.on_sale,
+                "currency": row.PriceRecord.currency,
+                "recorded_at": row.PriceRecord.recorded_at.isoformat() if row.PriceRecord.recorded_at else None,
             }
-            for pr in prices
+            for row in prices
         ],
     }
 
