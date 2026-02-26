@@ -25,16 +25,16 @@
     }
   </script>
 
-  <!-- Inter font -->
+  <!-- Inter font — only weights we actually use, swap avoids invisible text flash -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- HTMX -->
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <!-- HTMX — vendored locally, defer so it doesn't block page render -->
+  <script src="/static/js/htmx.min.js" defer></script>
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <!-- Per-page extras (e.g. Chart.js on product detail only) -->
+  {% block extra_head %}{% endblock %}
 
   <style>
     * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }

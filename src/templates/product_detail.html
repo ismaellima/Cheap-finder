@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ product.name }} — Cheap Finder{% endblock %}
 
+{% block extra_head %}
+  <script src="/static/js/chart.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <!-- Breadcrumb -->
 <div class="flex items-center gap-2 text-sm text-neutral-500 mb-6 overflow-x-auto whitespace-nowrap">
