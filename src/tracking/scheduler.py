@@ -66,10 +66,10 @@ async def keep_alive_ping(url: str) -> None:
 
 
 def setup_keep_alive(sched: AsyncIOScheduler, external_url: str) -> None:
-    """Add a 10-minute interval job to keep the Render instance awake."""
+    """Add a 5-minute interval job to keep the Render instance awake."""
     sched.add_job(
         keep_alive_ping,
-        trigger=IntervalTrigger(minutes=10),
+        trigger=IntervalTrigger(minutes=5),
         args=[external_url.rstrip("/")],
         id="keep_alive_ping",
         name="Keep Render instance alive",
