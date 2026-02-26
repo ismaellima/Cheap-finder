@@ -142,10 +142,8 @@ def _ensure_indexes(conn) -> None:
 
     SQLAlchemy's create_all skips indexes if the table already exists.
     This runs after create_all to fill in any gaps — safe to run repeatedly
-    (catches IntegrityError / already-exists errors silently).
+    (catches all errors silently so a slow/failing index never crashes startup).
     """
-    from sqlalchemy.exc import OperationalError, ProgrammingError
-
     inspector = sa_inspect(conn)
     for table in Base.metadata.sorted_tables:
         if not inspector.has_table(table.name):
@@ -156,9 +154,10 @@ def _ensure_indexes(conn) -> None:
                 try:
                     index.create(conn)
                     logger.info(f"Auto-migration: created index {index.name} on {table.name}")
-                except (OperationalError, ProgrammingError) as e:
-                    # Index already exists under a different name or dialect issue — skip
-                    logger.debug(f"Skipped index {index.name}: {e}")
+                except Exception as e:
+                    # Index already exists under a different name, dialect issue,
+                    # or timeout on large tables — log and skip, never crash startup
+                    logger.warning(f"Skipped index {index.name}: {e}")
 
 
 async def init_db() -> None:
