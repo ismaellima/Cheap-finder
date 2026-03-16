@@ -1,9 +1,3 @@
-databases:
-  - name: cheap-finder-db
-    plan: free
-    databaseName: cheapfinder
-    user: cheapfinder
-
 services:
   - type: web
     name: cheap-finder
@@ -13,9 +7,7 @@ services:
     startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: cheap-finder-db
-          property: connectionString
+        sync: false
       - key: PYTHON_VERSION
         value: "3.11"
       - key: LOG_LEVEL
