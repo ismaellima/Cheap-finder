@@ -119,6 +119,7 @@ async def dashboard(
         "brand_duplicate": "A brand with this name already exists.",
         "brand_slug_taken": "A brand with a similar name already exists.",
         "brand_not_found": "Brand not found.",
+        "product_not_found": "Product not found.",
     }
 
     brands_result = await session.execute(
@@ -210,9 +211,9 @@ async def dashboard(
     }
 
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
-            "request": request,
             "brands": brands,
             "brand_stats": brand_stats,
             "brand_retailers_map": brand_retailers_map,
@@ -303,9 +304,9 @@ async def deals_page(
     unread_count = unread_result.scalar() or 0
 
     return templates.TemplateResponse(
+        request,
         "deals.html",
         {
-            "request": request,
             "products": products,
             "deal_brands": deal_brands,
             "current_brand": brand,
@@ -726,9 +727,9 @@ async def search_products(
     unread_count = unread_result.scalar() or 0
 
     return templates.TemplateResponse(
+        request,
         "search_results.html",
         {
-            "request": request,
             "products": products,
             "query": q.strip(),
             "total_products": total_products,
@@ -760,11 +761,7 @@ async def brand_detail(
 ):
     brand = await session.get(Brand, brand_id)
     if not brand:
-        return templates.TemplateResponse(
-            "dashboard.html",
-            {"request": request, "error": "Brand not found", "is_admin": _is_admin(request)},
-            status_code=404,
-        )
+        return RedirectResponse("/?error=brand_not_found", status_code=HTTP_303_SEE_OTHER)
 
     # Build dynamic query with filters
     query = (
@@ -871,9 +868,9 @@ async def brand_detail(
         aliases = []
 
     return templates.TemplateResponse(
+        request,
         "brand_detail.html",
         {
-            "request": request,
             "brand": brand,
             "products": products,
             "linked_retailers": linked_retailers,
@@ -906,11 +903,7 @@ async def product_detail(
         options=[selectinload(Product.brand), selectinload(Product.retailer)],
     )
     if not product:
-        return templates.TemplateResponse(
-            "dashboard.html",
-            {"request": request, "error": "Product not found", "is_admin": _is_admin(request)},
-            status_code=404,
-        )
+        return RedirectResponse("/?error=product_not_found", status_code=HTTP_303_SEE_OTHER)
 
     from src.tracking.history import get_price_trend
     from src.tracking.comparison import find_similar_products
@@ -924,9 +917,9 @@ async def product_detail(
     unread_count = unread_result.scalar() or 0
 
     return templates.TemplateResponse(
+        request,
         "product_detail.html",
         {
-            "request": request,
             "product": product,
             "trend": trend,
             "similar_products": similar_products,
@@ -948,9 +941,9 @@ async def wishlist_page(
     unread_count = unread_result.scalar() or 0
 
     return templates.TemplateResponse(
+        request,
         "wishlist.html",
         {
-            "request": request,
             "unread_count": unread_count,
             "format_price": format_price,
             "is_admin": _is_admin(request),
@@ -974,8 +967,9 @@ async def wishlist_products_partial(
 
     if not id_list:
         return templates.TemplateResponse(
+            request,
             "components/wishlist_empty.html",
-            {"request": request},
+            {},
         )
 
     result = await session.execute(
@@ -988,14 +982,15 @@ async def wishlist_products_partial(
 
     if not products:
         return templates.TemplateResponse(
+            request,
             "components/wishlist_empty.html",
-            {"request": request},
+            {},
         )
 
     return templates.TemplateResponse(
+        request,
         "components/wishlist_grid.html",
         {
-            "request": request,
             "products": products,
             "format_price": format_price,
         },
@@ -1022,9 +1017,9 @@ async def notifications_page(
     unread_count = unread_result.scalar() or 0
 
     return templates.TemplateResponse(
+        request,
         "notifications.html",
         {
-            "request": request,
             "notifications": notifications,
             "unread_count": unread_count,
             "is_admin": _is_admin(request),
@@ -1054,9 +1049,9 @@ async def alerts_page(
     unread_count = unread_result.scalar() or 0
 
     return templates.TemplateResponse(
+        request,
         "alerts.html",
         {
-            "request": request,
             "rules": rules,
             "brands": brands,
             "unread_count": unread_count,
@@ -1134,9 +1129,9 @@ async def suggest_retailer_page(
     }
 
     return templates.TemplateResponse(
+        request,
         "suggest_retailer.html",
         {
-            "request": request,
             "suggestions": suggestions,
             "retailers": retailers,
             "retailer_product_counts": retailer_product_counts,

@@ -98,7 +98,7 @@ async def login_page(request: Request):
     # If already authenticated, redirect to dashboard
     if request.session.get("authenticated"):
         return RedirectResponse("/", status_code=HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @router.post("/login")
@@ -114,8 +114,9 @@ async def login_submit(request: Request):
 
     logger.warning("Dashboard login failed — incorrect password")
     return templates.TemplateResponse(
+        request,
         "login.html",
-        {"request": request, "error": "Incorrect password"},
+        {"error": "Incorrect password"},
         status_code=401,
     )
 
