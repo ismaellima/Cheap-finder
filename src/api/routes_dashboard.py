@@ -674,6 +674,33 @@ async def discover_all(request: Request):
     return RedirectResponse("/?success=discovery_started", status_code=HTTP_303_SEE_OTHER)
 
 
+async def _check_all_prices_background() -> None:
+    """Run a full price check (and dead-product cleanup) in the background."""
+    from src.tracking.price_checker import check_all_prices
+
+    scrapers = _get_working_scrapers()
+    try:
+        async with async_session() as session:
+            count = await check_all_prices(session, scrapers)
+            logger.info(f"Manual price check complete: {count} products updated")
+    except Exception:
+        logger.exception("Manual price check failed")
+    finally:
+        for s in scrapers.values():
+            await s.close()
+
+
+@router.post("/price-check")
+async def price_check_all(request: Request):
+    """Manually trigger a full price check across every tracked product.
+
+    Same job the daily scheduler runs — also removes products whose page now
+    returns a confirmed 404, instead of waiting for the next scheduled run.
+    """
+    asyncio.create_task(_check_all_prices_background())
+    return RedirectResponse("/?success=discovery_started", status_code=HTTP_303_SEE_OTHER)
+
+
 @router.post("/brands/{brand_id}/discover")
 async def discover_brand(request: Request, brand_id: int):
     """Trigger product discovery for a single brand."""
