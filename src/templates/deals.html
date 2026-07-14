@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}All Deals — Cheap Finder{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<div class="flex items-center gap-2 text-sm text-neutral-500 mb-6">
+  <a href="/" class="hover:text-white transition-colors">Dashboard</a>
+  <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+  </svg>
+  <span class="text-neutral-300">All Deals</span>
+</div>
+
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">All Price Drops</h1>
+  <p class="text-sm text-neutral-500 mt-1">{{ total_products }} product{{ 's' if total_products != 1 else '' }} currently on sale</p>
+</div>
+
+<form method="GET" action="/deals" class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <input type="hidden" name="brand" id="deal-brand-input" value="{{ current_brand }}">
+  <input type="hidden" name="sort" id="deal-sort-input" value="{{ current_sort }}">
+
+  <div class="flex items-center gap-1.5 overflow-x-auto pb-1 -mb-1">
+    <button type="button"
+            onclick="document.getElementById('deal-brand-input').value=''; this.form.submit()"
+            class="text-xs px-3 py-1.5 rounded-full border transition-colors shrink-0 {% if not current_brand %}bg-white text-neutral-900 border-white{% else %}text-neutral-400 border-neutral-700 hover:text-white hover:border-neutral-500{% endif %}">
+      All
+    </button>
+    {% for b in deal_brands %}
+    <button type="button"
+            onclick="document.getElementById('deal-brand-input').value='{{ b.id }}'; this.form.submit()"
+            class="text-xs px-3 py-1.5 rounded-full border transition-colors shrink-0 {% if current_brand == b.id %}bg-white text-neutral-900 border-white{% else %}text-neutral-400 border-neutral-700 hover:text-white hover:border-neutral-500{% endif %}">
+      {{ b.name }} <span class="opacity-60">({{ b.cnt }})</span>
+    </button>
+    {% endfor %}
+  </div>
+
+  <div class="flex items-center gap-2 shrink-0">
+    <select onchange="document.getElementById('deal-sort-input').value=this.value; this.form.submit()"
+            class="bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors cursor-pointer">
+      <option value="discount" {% if current_sort == 'discount' %}selected{% endif %}>Biggest discount</option>
+      <option value="price-asc" {% if current_sort == 'price-asc' %}selected{% endif %}>Price: Low to High</option>
+      <option value="price-desc" {% if current_sort == 'price-desc' %}selected{% endif %}>Price: High to Low</option>
+    </select>
+    <select name="per_page" onchange="this.form.submit()"
+            class="bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors cursor-pointer">
+      {% for size in page_sizes %}
+      <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} per page</option>
+      {% endfor %}
+      <option value="200" {% if per_page not in page_sizes %}selected{% endif %}>Show all</option>
+    </select>
+  </div>
+</form>
+
+{% if products %}
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+  {% for product in products %}
+  <div>
+    {% include "components/product_card.html" %}
+  </div>
+  {% endfor %}
+</div>
+
+{% include "components/deals_pagination.html" %}
+{% else %}
+<div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-12 text-center">
+  <svg class="w-12 h-12 mx-auto mb-3 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/>
+  </svg>
+  {% if current_brand %}
+  <p class="text-neutral-500 text-sm mb-4">No active drops for this brand right now.</p>
+  <a href="/deals" class="text-green-500 hover:text-green-400 text-sm">Clear filter</a>
+  {% else %}
+  <p class="text-neutral-500 text-sm">No price drops right now. Prices are checked daily.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

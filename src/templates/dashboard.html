@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — Cheap Finder{% endblock %}
 
+{% block extra_head %}
+<style>
+  .category-filter-chip{ font-size:11px; color:#a1a1aa; background:transparent; border:1px solid #262626; padding:6px 12px; border-radius:9999px; cursor:pointer; transition:.15s; white-space:nowrap; }
+  .category-filter-chip:hover{ color:#fff; border-color:#525252; }
+  .category-filter-chip.active-chip{ background:#fafafa; color:#0a0a0a; border-color:#fafafa; }
+  html:not(.dark) .category-filter-chip{ color:#525252; border-color:#e5e5e5; }
+  html:not(.dark) .category-filter-chip:hover{ color:#0a0a0a; border-color:#a3a3a3; }
+  html:not(.dark) .category-filter-chip.active-chip{ background:#0a0a0a; color:#fafafa; border-color:#0a0a0a; }
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Header -->
 <div class="mb-8">
@@ -19,6 +30,56 @@
   {{ error_message }}
 </div>
 {% endif %}
+
+<!-- Stats strip -->
+<section class="mb-10">
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+      <div class="text-xl sm:text-2xl font-semibold text-white dark:text-white light:text-neutral-900">{{ "{:,}".format(stats.total_products) }}</div>
+      <div class="text-xs text-neutral-500 mt-1">products tracked</div>
+    </div>
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+      <div class="text-xl sm:text-2xl font-semibold text-white dark:text-white light:text-neutral-900">{{ stats.total_brands }}</div>
+      <div class="text-xs text-neutral-500 mt-1">brands tracked</div>
+    </div>
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+      <div class="text-xl sm:text-2xl font-semibold text-green-500">{{ stats.drops_today }}</div>
+      <div class="text-xs text-neutral-500 mt-1">drops today</div>
+    </div>
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+      <div class="text-xl sm:text-2xl font-semibold text-green-500">-{{ stats.max_discount_pct }}%</div>
+      <div class="text-xs text-neutral-500 mt-1">biggest markdown</div>
+    </div>
+  </div>
+</section>
+
+<!-- Today's Best Drops -->
+<section class="mb-12">
+  <div class="flex items-center justify-between mb-1">
+    <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider">Today's Best Drops</h2>
+    {% if rail_drops %}
+    <a href="/deals" class="text-xs text-green-500 hover:text-green-400 transition-colors">View all deals &rarr;</a>
+    {% endif %}
+  </div>
+
+  {% if rail_drops %}
+  <p class="text-xs text-neutral-600 mb-4">Capped at 2 drops per brand, so one storewide sale can't crowd out everything else.</p>
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+    {% for product in rail_drops %}
+    <div>
+      {% include "components/product_card.html" %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-12 text-center">
+    <svg class="w-12 h-12 mx-auto mb-3 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/>
+    </svg>
+    <p class="text-neutral-500 text-sm">No price drops yet. Prices are checked daily.</p>
+  </div>
+  {% endif %}
+</section>
 
 <!-- Brands Grid -->
 <section class="mb-12">
@@ -41,19 +102,47 @@
     </div>
   </div>
 
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div class="flex items-center gap-1.5 overflow-x-auto pb-1 -mb-1" id="category-filters">
+      <button type="button" data-category="" class="category-filter-chip active-chip">All</button>
+      {% for cat in categories %}
+      <button type="button" data-category="{{ cat }}" class="category-filter-chip capitalize">{{ cat }}</button>
+      {% endfor %}
+    </div>
+    <select id="brand-sort-select"
+            class="bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors cursor-pointer shrink-0">
+      <option value="deals">Sort: active deals first</option>
+      <option value="name">Sort: name (A&ndash;Z)</option>
+      <option value="products">Sort: most products</option>
+      <option value="retailers">Sort: most retailers</option>
+    </select>
+  </div>
+
+  <div id="brand-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
     {% for brand in brands %}
-    <a href="/brands/{{ brand.id }}" class="group block bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-5 hover:border-neutral-600 dark:hover:border-neutral-600 light:hover:border-neutral-400 transition-all duration-200">
-      <div class="flex items-start justify-between">
-        <div>
+    <a href="/brands/{{ brand.id }}"
+       class="brand-card-v2 group block bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-5 hover:border-neutral-600 dark:hover:border-neutral-600 light:hover:border-neutral-400 transition-all duration-200"
+       data-category="{{ brand.category }}"
+       data-name="{{ brand.name }}"
+       data-products="{{ brand_stats[brand.id].product_count }}"
+       data-retailers="{{ brand_stats[brand.id].retailer_count }}"
+       data-deals="{{ deal_counts_by_brand.get(brand.id, 0) }}">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <h3 class="font-medium text-white dark:text-white light:text-neutral-900 group-hover:text-green-500 transition-colors">
             {{ brand.name }}
           </h3>
-          <p class="text-xs text-neutral-500 mt-1 capitalize">{{ brand.category }}</p>
+          {% if brand.category %}
+          <span class="text-[10px] font-medium px-1.5 py-0.5 rounded capitalize"
+                style="background-color: color-mix(in srgb, {{ brand_colors[brand.id] }} 16%, transparent); color: {{ brand_colors[brand.id] }};">
+            {{ brand.category }}
+          </span>
+          {% endif %}
         </div>
-        {% if brand.alert_threshold_pct %}
-        <span class="text-xs text-neutral-600 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-2 py-1 rounded">
-          {{ brand.alert_threshold_pct | int }}% alert
+        {% if deal_counts_by_brand.get(brand.id, 0) > 0 %}
+        <span class="shrink-0 text-[10px] font-medium text-green-400 bg-green-500/10 px-2 py-1 rounded-full flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+          {{ deal_counts_by_brand[brand.id] }} deal{{ 's' if deal_counts_by_brand[brand.id] != 1 else '' }}
         </span>
         {% endif %}
       </div>
@@ -64,13 +153,8 @@
       </div>
 
       {% if brand_retailers_map.get(brand.id) %}
-      <div class="flex flex-wrap gap-1 mt-2">
-        {% for retailer_name in brand_retailers_map[brand.id][:4] %}
-        <span class="text-[10px] text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-1.5 py-0.5 rounded">{{ retailer_name }}</span>
-        {% endfor %}
-        {% if brand_retailers_map[brand.id] | length > 4 %}
-        <span class="text-[10px] text-neutral-600">+{{ brand_retailers_map[brand.id] | length - 4 }} more</span>
-        {% endif %}
+      <div class="text-xs text-neutral-500 mt-2">
+        {{ brand_retailers_map[brand.id][:2] | join(', ') }}{% if brand_retailers_map[brand.id] | length > 2 %} +{{ brand_retailers_map[brand.id] | length - 2 }} more{% endif %}
       </div>
       {% endif %}
     </a>
@@ -78,7 +162,7 @@
 
     {% if is_admin %}
     <!-- Add brand card -->
-    <button onclick="document.getElementById('add-brand-modal').classList.remove('hidden')"
+    <button id="add-brand-btn" onclick="document.getElementById('add-brand-modal').classList.remove('hidden')"
             class="block border-2 border-dashed border-neutral-800 dark:border-neutral-800 light:border-neutral-300 rounded-lg p-5 text-center text-neutral-600 hover:text-neutral-400 hover:border-neutral-600 transition-all duration-200">
       <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"/>
@@ -87,28 +171,6 @@
     </button>
     {% endif %}
   </div>
-</section>
-
-<!-- Recent Price Drops -->
-<section>
-  <div class="flex items-center justify-between mb-4">
-    <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider">Recent Price Drops</h2>
-  </div>
-
-  {% if recent_drops %}
-  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-    {% for product in recent_drops %}
-      {% include "components/product_card.html" %}
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-12 text-center">
-    <svg class="w-12 h-12 mx-auto mb-3 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/>
-    </svg>
-    <p class="text-neutral-500 text-sm">No price drops yet. Prices are checked daily.</p>
-  </div>
-  {% endif %}
 </section>
 
 {% if is_admin %}
@@ -150,4 +212,37 @@
   </div>
 </div>
 {% endif %}
+
+<script>
+  // Category filter (client-side — the brand grid is small enough to filter in place)
+  document.querySelectorAll('.category-filter-chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      document.querySelectorAll('.category-filter-chip').forEach(function (c) { c.classList.remove('active-chip'); });
+      chip.classList.add('active-chip');
+      var cat = chip.dataset.category;
+      document.querySelectorAll('#brand-grid .brand-card-v2').forEach(function (card) {
+        card.style.display = (!cat || card.dataset.category === cat) ? '' : 'none';
+      });
+    });
+  });
+
+  // Brand sort (client-side, re-orders the existing cards)
+  var brandSortSelect = document.getElementById('brand-sort-select');
+  if (brandSortSelect) {
+    brandSortSelect.addEventListener('change', function (e) {
+      var grid = document.getElementById('brand-grid');
+      var addBrandBtn = document.getElementById('add-brand-btn');
+      var cards = Array.from(grid.querySelectorAll('.brand-card-v2'));
+      var mode = e.target.value;
+      cards.sort(function (a, b) {
+        if (mode === 'name') return a.dataset.name.localeCompare(b.dataset.name);
+        if (mode === 'products') return b.dataset.products - a.dataset.products;
+        if (mode === 'retailers') return b.dataset.retailers - a.dataset.retailers;
+        return (b.dataset.deals - a.dataset.deals) || a.dataset.name.localeCompare(b.dataset.name);
+      });
+      cards.forEach(function (card) { grid.appendChild(card); });
+      if (addBrandBtn) grid.appendChild(addBrandBtn);
+    });
+  }
+</script>
 {% endblock %}

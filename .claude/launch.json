@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cheap-finder-dev",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "source .venv/bin/activate && uvicorn src.main:app --port 8000"],
+      "port": 8000
+    }
+  ]
+}

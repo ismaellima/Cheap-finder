@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import time
+from collections import Counter
 from typing import Any, Dict
 from urllib.parse import urlparse
 
@@ -79,6 +80,28 @@ def format_price(cents: int | None) -> str:
     return f"${cents / 100:,.2f}"
 
 
+def _discount_pct(product: Product) -> float:
+    return (product.original_price - product.current_price) / product.original_price * 100
+
+
+CATEGORY_COLORS = {
+    "outdoor": "#2dd4bf",
+    "fashion": "#a78bfa",
+    "footwear": "#f59e0b",
+    "sneakers": "#38bdf8",
+    "running": "#fb923c",
+    "home": "#f472b6",
+    "perfume": "#e879f9",
+}
+DEFAULT_CATEGORY_COLOR = "#8a8a8a"
+
+RAIL_DEALS_PER_BRAND = 2
+RAIL_DEALS_TOTAL = 8
+
+DEALS_PAGE_SIZES = (8, 16, 24)
+DEALS_MAX_PER_PAGE = 200
+
+
 @router.get("/")
 async def dashboard(
     request: Request,
@@ -103,15 +126,37 @@ async def dashboard(
     )
     brands = brands_result.scalars().all()
 
-    # Recent price drops
+    # All on-sale products — feeds the stat strip, the capped "Today's Best
+    # Drops" rail, and the per-brand deal-count badges below.
     drops_result = await session.execute(
         select(Product)
-        .where(Product.on_sale.is_(True))
+        .where(
+            Product.on_sale.is_(True),
+            Product.original_price.isnot(None),
+            Product.original_price > 0,
+            Product.current_price.isnot(None),
+        )
         .options(selectinload(Product.brand), selectinload(Product.retailer))
         .order_by(Product.last_checked.desc().nullslast())
-        .limit(12)
     )
-    recent_drops = drops_result.scalars().all()
+    all_drops = drops_result.scalars().all()
+
+    drops_by_discount = sorted(all_drops, key=_discount_pct, reverse=True)
+
+    # Cap the rail at N per brand so one storewide sale can't crowd out
+    # every other brand's drop.
+    rail_drops: list[Product] = []
+    rail_brand_counts: Dict[int, int] = {}
+    for p in drops_by_discount:
+        if len(rail_drops) >= RAIL_DEALS_TOTAL:
+            break
+        if rail_brand_counts.get(p.brand_id, 0) >= RAIL_DEALS_PER_BRAND:
+            continue
+        rail_drops.append(p)
+        rail_brand_counts[p.brand_id] = rail_brand_counts.get(p.brand_id, 0) + 1
+
+    deal_counts_by_brand = Counter(p.brand_id for p in all_drops)
+    max_discount_pct = int(max((_discount_pct(p) for p in all_drops), default=0))
 
     # Unread notification count
     unread_result = await session.execute(
@@ -157,6 +202,13 @@ async def dashboard(
     for row in retailers_by_brand_result:
         brand_retailers_map[row.brand_id].append(row.name)
 
+    total_products = sum(product_counts.values())
+    categories = sorted({b.category for b in brands if b.category})
+    brand_colors = {
+        b.id: CATEGORY_COLORS.get(b.category.lower(), DEFAULT_CATEGORY_COLOR)
+        for b in brands
+    }
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -164,11 +216,107 @@ async def dashboard(
             "brands": brands,
             "brand_stats": brand_stats,
             "brand_retailers_map": brand_retailers_map,
-            "recent_drops": recent_drops,
+            "brand_colors": brand_colors,
+            "deal_counts_by_brand": deal_counts_by_brand,
+            "categories": categories,
+            "rail_drops": rail_drops,
+            "stats": {
+                "total_products": total_products,
+                "total_brands": len(brands),
+                "drops_today": len(all_drops),
+                "max_discount_pct": max_discount_pct,
+            },
             "unread_count": unread_count,
             "format_price": format_price,
             "success_message": success_messages.get(success, ""),
             "error_message": error_messages.get(error, ""),
+            "is_admin": _is_admin(request),
+        },
+    )
+
+
+@router.get("/deals")
+async def deals_page(
+    request: Request,
+    brand: int = 0,
+    sort: str = "discount",
+    page: int = 1,
+    per_page: int = 8,
+    session: AsyncSession = Depends(get_session),
+):
+    """Full, filterable, paginated list of every on-sale product."""
+    per_page = max(1, min(per_page, DEALS_MAX_PER_PAGE))
+
+    query = (
+        select(Product)
+        .where(
+            Product.on_sale.is_(True),
+            Product.original_price.isnot(None),
+            Product.original_price > 0,
+            Product.current_price.isnot(None),
+        )
+        .options(selectinload(Product.brand), selectinload(Product.retailer))
+    )
+    if brand:
+        query = query.where(Product.brand_id == brand)
+
+    if sort == "price-asc":
+        query = query.order_by(Product.current_price.asc())
+    elif sort == "price-desc":
+        query = query.order_by(Product.current_price.desc())
+    else:
+        sort = "discount"
+        discount_expr = (
+            (Product.original_price - Product.current_price) * 100.0 / Product.original_price
+        )
+        query = query.order_by(discount_expr.desc())
+
+    count_q = select(func.count()).select_from(query.subquery())
+    total_products = (await session.execute(count_q)).scalar() or 0
+
+    total_pages = max(1, (total_products + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+
+    products_result = await session.execute(
+        query.offset((page - 1) * per_page).limit(per_page)
+    )
+    products = products_result.scalars().all()
+
+    # Brands that currently have at least one on-sale product — powers the filter chips.
+    deal_brands_result = await session.execute(
+        select(Brand.id, Brand.name, func.count(Product.id).label("cnt"))
+        .join(Product, Product.brand_id == Brand.id)
+        .where(
+            Product.on_sale.is_(True),
+            Product.original_price.isnot(None),
+            Product.original_price > 0,
+            Product.current_price.isnot(None),
+        )
+        .group_by(Brand.id, Brand.name)
+        .order_by(Brand.name)
+    )
+    deal_brands = deal_brands_result.all()
+
+    unread_result = await session.execute(
+        select(func.count(Notification.id)).where(Notification.read.is_(False))
+    )
+    unread_count = unread_result.scalar() or 0
+
+    return templates.TemplateResponse(
+        "deals.html",
+        {
+            "request": request,
+            "products": products,
+            "deal_brands": deal_brands,
+            "current_brand": brand,
+            "current_sort": sort,
+            "page_sizes": DEALS_PAGE_SIZES,
+            "page": page,
+            "total_pages": total_pages,
+            "total_products": total_products,
+            "per_page": per_page,
+            "unread_count": unread_count,
+            "format_price": format_price,
             "is_admin": _is_admin(request),
         },
     )
