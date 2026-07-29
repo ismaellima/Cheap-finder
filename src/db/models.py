@@ -98,6 +98,10 @@ class Product(Base):
         Index("ix_products_brand_id", "brand_id"),
         Index("ix_products_retailer_id", "retailer_id"),
         Index("ix_products_on_sale", "on_sale"),
+        # The rolling price-check batch orders the whole table by last_checked
+        # every 30 minutes to find the stalest products; without this it is a
+        # full sort of every product on each run.
+        Index("ix_products_last_checked", "last_checked"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
