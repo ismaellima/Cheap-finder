@@ -47,6 +47,27 @@ def _cleanup_stale_progress() -> None:
         del _discovery_progress[k]
 
 
+# Strong references to in-flight background jobs. The event loop only holds a
+# weak reference to a running task, so a bare asyncio.create_task() whose result
+# nobody keeps can be garbage collected mid-execution — it disappears with no
+# exception and no log line. That is what made POST /price-check return 303 and
+# then do nothing at all. Hold the task until it finishes, then drop it.
+_background_tasks: set = set()
+
+
+def _spawn(coro) -> None:
+    """Run a coroutine in the background, keeping it alive until it completes."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+
+    def _finished(t) -> None:
+        _background_tasks.discard(t)
+        if not t.cancelled() and t.exception() is not None:
+            logger.error("Background task failed", exc_info=t.exception())
+
+    task.add_done_callback(_finished)
+
+
 router = APIRouter(tags=["dashboard"])
 templates = Jinja2Templates(directory="src/templates")
 
@@ -381,7 +402,7 @@ async def add_brand_submit(
 
     # Trigger background discovery for the new brand
     brand_id = brand.id
-    asyncio.create_task(_discover_brand_background(brand_id))
+    _spawn(_discover_brand_background(brand_id))
 
     return RedirectResponse("/?success=brand_added", status_code=HTTP_303_SEE_OTHER)
 
@@ -500,7 +521,7 @@ async def edit_brand_submit(
                 except Exception as e:
                     logger.exception(f"Background re-discovery failed for brand {brand_id}")
 
-            asyncio.create_task(_safe_rediscovery())
+            _spawn(_safe_rediscovery())
 
             logger.info(
                 f"Queued re-discovery for {brand.name} after alias change "
@@ -672,7 +693,7 @@ async def _discover_retailer_background(retailer_id: int) -> None:
 @router.post("/discover")
 async def discover_all(request: Request):
     """Trigger full product discovery for all brands."""
-    asyncio.create_task(_discover_all_background())
+    _spawn(_discover_all_background())
     return RedirectResponse("/?success=discovery_started", status_code=HTTP_303_SEE_OTHER)
 
 
@@ -704,14 +725,14 @@ async def price_check_all(request: Request):
     used to exhaust the instance's memory and die partway through. This just
     advances the same rolling queue the scheduler works through.
     """
-    asyncio.create_task(_check_all_prices_background())
+    _spawn(_check_all_prices_background())
     return RedirectResponse("/?success=discovery_started", status_code=HTTP_303_SEE_OTHER)
 
 
 @router.post("/brands/{brand_id}/discover")
 async def discover_brand(request: Request, brand_id: int):
     """Trigger product discovery for a single brand."""
-    asyncio.create_task(_discover_brand_background(brand_id))
+    _spawn(_discover_brand_background(brand_id))
     return RedirectResponse(
         f"/brands/{brand_id}?success=discovery_started",
         status_code=HTTP_303_SEE_OTHER,
@@ -1195,7 +1216,7 @@ async def discover_retailer(request: Request, retailer_id: int):
     # Clean up stale entries
     _cleanup_stale_progress()
 
-    asyncio.create_task(_discover_retailer_background(retailer_id))
+    _spawn(_discover_retailer_background(retailer_id))
     return JSONResponse({"status": "started", "task_key": task_key})
 
 
@@ -1391,7 +1412,7 @@ async def suggest_retailer_submit(
 
     # Trigger background discovery for the new retailer
     if health_ok:
-        asyncio.create_task(_discover_retailer_background(retailer.id))
+        _spawn(_discover_retailer_background(retailer.id))
 
     return RedirectResponse(
         "/suggest-retailer?success=1", status_code=HTTP_303_SEE_OTHER
