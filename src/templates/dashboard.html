@@ -53,17 +53,17 @@
   </div>
 </section>
 
-<!-- Today's Best Drops -->
+<!-- Recently confirmed price drops -->
 <section class="mb-12">
   <div class="flex items-center justify-between mb-1">
-    <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider">Today's Best Drops</h2>
+    <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider">Latest Price Drops</h2>
     {% if rail_drops %}
     <a href="/deals" class="text-xs text-green-500 hover:text-green-400 transition-colors">View all deals &rarr;</a>
     {% endif %}
   </div>
 
   {% if rail_drops %}
-  <p class="text-xs text-neutral-600 mb-4">Capped at 2 drops per brand, so one storewide sale can't crowd out everything else.</p>
+  <p class="text-xs text-neutral-600 mb-4">Biggest drops re-confirmed in the last {{ rail_verified_days }} days, max 2 per brand and per retailer.</p>
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
     {% for product in rail_drops %}
     <div>
@@ -76,7 +76,8 @@
     <svg class="w-12 h-12 mx-auto mb-3 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/>
     </svg>
-    <p class="text-neutral-500 text-sm">No price drops yet. Prices are checked daily.</p>
+    <p class="text-neutral-500 text-sm">No drops re-confirmed in the last {{ rail_verified_days }} days yet.</p>
+    <p class="text-neutral-600 text-xs mt-1">Price checks run in rolling batches, so this fills in as they work through the catalogue.</p>
   </div>
   {% endif %}
 </section>

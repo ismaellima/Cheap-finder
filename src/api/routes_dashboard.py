@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import logging
 import re
@@ -24,6 +25,7 @@ from src.db.models import (
     Brand,
     BrandRetailer,
     Notification,
+    PriceRecord,
     Product,
     Retailer,
     RetailerSuggestion,
@@ -117,7 +119,42 @@ CATEGORY_COLORS = {
 DEFAULT_CATEGORY_COLOR = "#8a8a8a"
 
 RAIL_DEALS_PER_BRAND = 2
+RAIL_DEALS_PER_RETAILER = 2
 RAIL_DEALS_TOTAL = 8
+
+# The rail only shows drops whose price was actually re-confirmed this recently.
+# Note this keys off PriceRecord, not Product.last_checked: last_checked is
+# stamped on failed checks too (so the rolling batch can advance past
+# unreadable products), whereas a PriceRecord row is only written when a fetch
+# genuinely succeeded. Filtering on last_checked would therefore keep exactly
+# the delisted products this is meant to exclude.
+RAIL_VERIFIED_DAYS = 7
+
+
+def select_rail_drops(candidates) -> list:
+    """Pick the rail line-up from candidates already ordered best-first.
+
+    Caps per brand *and* per retailer. A brand-only cap was not enough: a
+    single outlet discounts across many brands, so it could still take every
+    slot while never tripping the per-brand limit.
+    """
+    chosen: list = []
+    per_brand: Dict[int, int] = {}
+    per_retailer: Dict[int, int] = {}
+
+    for product in candidates:
+        if len(chosen) >= RAIL_DEALS_TOTAL:
+            break
+        if per_brand.get(product.brand_id, 0) >= RAIL_DEALS_PER_BRAND:
+            continue
+        if per_retailer.get(product.retailer_id, 0) >= RAIL_DEALS_PER_RETAILER:
+            continue
+        chosen.append(product)
+        per_brand[product.brand_id] = per_brand.get(product.brand_id, 0) + 1
+        per_retailer[product.retailer_id] = per_retailer.get(product.retailer_id, 0) + 1
+
+    return chosen
+
 
 DEALS_PAGE_SIZES = (8, 16, 24)
 DEALS_MAX_PER_PAGE = 200
@@ -163,19 +200,31 @@ async def dashboard(
     )
     all_drops = drops_result.scalars().all()
 
-    drops_by_discount = sorted(all_drops, key=_discount_pct, reverse=True)
+    # Restrict the rail to drops we have actually re-confirmed recently.
+    # Ranking every on-sale product by discount froze the rail solid: the top
+    # slots were all held at the maximum discount by delisted outlet stock,
+    # which can never be re-priced and never 404s, so no newly found drop could
+    # ever displace them.
+    verified_cutoff = dt.datetime.utcnow() - dt.timedelta(days=RAIL_VERIFIED_DAYS)
+    verified_ids = set(
+        (
+            await session.execute(
+                select(PriceRecord.product_id)
+                .where(PriceRecord.recorded_at >= verified_cutoff)
+                .distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
 
-    # Cap the rail at N per brand so one storewide sale can't crowd out
-    # every other brand's drop.
-    rail_drops: list[Product] = []
-    rail_brand_counts: Dict[int, int] = {}
-    for p in drops_by_discount:
-        if len(rail_drops) >= RAIL_DEALS_TOTAL:
-            break
-        if rail_brand_counts.get(p.brand_id, 0) >= RAIL_DEALS_PER_BRAND:
-            continue
-        rail_drops.append(p)
-        rail_brand_counts[p.brand_id] = rail_brand_counts.get(p.brand_id, 0) + 1
+    drops_by_discount = sorted(
+        (p for p in all_drops if p.id in verified_ids),
+        key=_discount_pct,
+        reverse=True,
+    )
+
+    rail_drops = select_rail_drops(drops_by_discount)
 
     deal_counts_by_brand = Counter(p.brand_id for p in all_drops)
     max_discount_pct = int(max((_discount_pct(p) for p in all_drops), default=0))
@@ -242,6 +291,7 @@ async def dashboard(
             "deal_counts_by_brand": deal_counts_by_brand,
             "categories": categories,
             "rail_drops": rail_drops,
+            "rail_verified_days": RAIL_VERIFIED_DAYS,
             "stats": {
                 "total_products": total_products,
                 "total_brands": len(brands),
