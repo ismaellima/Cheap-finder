@@ -39,6 +39,7 @@
     <select onchange="document.getElementById('deal-sort-input').value=this.value; this.form.submit()"
             class="bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors cursor-pointer">
       <option value="discount" {% if current_sort == 'discount' %}selected{% endif %}>Biggest discount</option>
+      <option value="recent" {% if current_sort == 'recent' %}selected{% endif %}>Most recent</option>
       <option value="price-asc" {% if current_sort == 'price-asc' %}selected{% endif %}>Price: Low to High</option>
       <option value="price-desc" {% if current_sort == 'price-desc' %}selected{% endif %}>Price: High to Low</option>
     </select>

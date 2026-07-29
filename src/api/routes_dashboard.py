@@ -338,6 +338,22 @@ async def deals_page(
         query = query.order_by(Product.current_price.asc())
     elif sort == "price-desc":
         query = query.order_by(Product.current_price.desc())
+    elif sort == "recent":
+        # "Most recent" = the last time we actually confirmed a price for this
+        # product. Deliberately not Product.last_checked, which is stamped on
+        # failed checks too and would float unreadable products to the top of
+        # a list whose whole point is showing the freshest deals.
+        latest_price = (
+            select(
+                PriceRecord.product_id.label("pid"),
+                func.max(PriceRecord.recorded_at).label("last_seen"),
+            )
+            .group_by(PriceRecord.product_id)
+            .subquery()
+        )
+        query = query.outerjoin(
+            latest_price, latest_price.c.pid == Product.id
+        ).order_by(latest_price.c.last_seen.desc().nullslast())
     else:
         sort = "discount"
         discount_expr = (
