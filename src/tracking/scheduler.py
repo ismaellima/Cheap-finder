@@ -19,14 +19,21 @@ SKIP_SCRAPERS = {"simons", "ssense", "nordstrom"}
 
 
 async def scheduled_price_check() -> None:
-    logger.info("Starting scheduled price check")
+    logger.info("Starting scheduled price check batch")
     async with async_session() as session:
         from src.retailers import get_all_scrapers
 
         scrapers = get_all_scrapers()
+        scrapers = {k: v for k, v in scrapers.items() if k not in SKIP_SCRAPERS}
         try:
-            count = await check_all_prices(session, scrapers)
-            logger.info(f"Scheduled check complete: {count} products updated")
+            stats = await check_all_prices(session, scrapers)
+            logger.info(
+                f"Scheduled batch complete: {stats['checked']} updated, "
+                f"{stats['removed']} removed, {stats['failed']} failed; "
+                f"{stats['remaining']} still stale"
+            )
+        except Exception:
+            logger.exception("Scheduled price check batch failed")
         finally:
             for scraper in scrapers.values():
                 await scraper.close()
@@ -78,13 +85,21 @@ def setup_keep_alive(sched: AsyncIOScheduler, external_url: str) -> None:
 
 
 def setup_scheduler() -> AsyncIOScheduler:
-    # Daily price check (e.g. 6:00 UTC)
+    # Rolling price-check batches. A single daily sweep of the whole catalogue
+    # ran for hours and never survived a free-tier restart, so it silently
+    # stopped covering most products. Small frequent batches finish well inside
+    # their own interval and resume where the last one stopped.
     scheduler.add_job(
         scheduled_price_check,
-        trigger=CronTrigger(hour=settings.PRICE_CHECK_HOUR, minute=0),
-        id="daily_price_check",
-        name="Daily price check across all retailers",
+        trigger=IntervalTrigger(minutes=settings.PRICE_CHECK_INTERVAL_MINUTES),
+        id="rolling_price_check",
+        name="Rolling price-check batch (least-recently-checked first)",
         replace_existing=True,
+        # If a batch overruns its slot, skip the missed runs rather than
+        # stacking concurrent sweeps on a 0.15-CPU instance.
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
     )
 
     # Weekly discovery (Sundays at 4:00 UTC — before daily price check)

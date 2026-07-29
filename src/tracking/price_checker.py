@@ -5,13 +5,14 @@ import logging
 from dataclasses import dataclass
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.alerts.notifier import send_alert
 from src.alerts.rules import check_price_alert
-from src.db.models import AlertEvent, PriceRecord, Product
+from src.config import settings
+from src.db.models import AlertEvent, PriceRecord, Product, Retailer
 from src.retailers.base import RetailerBase
 
 logger = logging.getLogger(__name__)
@@ -74,10 +75,18 @@ async def check_product_price(
             await _delete_removed_product(session, product)
             return CheckResult(removed=True)
         logger.warning(f"Could not get price for {product.name} ({product.url})")
+        # Stamp the attempt even though nothing was scraped. Batches are drawn
+        # oldest-checked-first, so a product left unstamped would sit at the head
+        # of the queue and be retried on every run forever, starving everything
+        # behind it.
+        product.last_checked = dt.datetime.utcnow()
+        await session.commit()
         return CheckResult()
 
     if not result.available:
         logger.info(f"Product out of stock, keeping: {product.name}")
+        product.last_checked = dt.datetime.utcnow()
+        await session.commit()
         return CheckResult()
 
     old_price = product.current_price or 0
@@ -109,21 +118,54 @@ async def check_product_price(
 async def check_all_prices(
     session: AsyncSession,
     scrapers: dict[str, RetailerBase],
-) -> int:
+    batch_size: int | None = None,
+) -> dict[str, int]:
+    """Check one batch of products, least-recently-checked first.
+
+    This deliberately does not sweep the whole catalogue in one pass. At ~2s
+    per request a full sweep runs for hours, and on a 512 MB free-tier instance
+    it reliably died partway through — taking all its progress with it, since
+    the next run restarted from the same end of the list. Anything past the
+    first few thousand products was never reached at all.
+
+    Ordering by last_checked instead makes progress durable without any
+    checkpoint state: whatever a crashed run failed to reach is exactly what
+    sits at the front of the queue next time. Every terminal outcome stamps
+    last_checked (see check_product_price), so the queue always advances.
+    """
+    limit = batch_size if batch_size is not None else settings.PRICE_CHECK_BATCH_SIZE
+
+    # Only pull products we can actually scrape. Retailers with no registered
+    # scraper (or one excluded as known-broken) would otherwise occupy batch
+    # slots on every run and never make progress.
+    scrapable_types = list(scrapers.keys())
+    if not scrapable_types:
+        logger.warning("No scrapers available, skipping price check")
+        return {"checked": 0, "removed": 0, "failed": 0, "batch": 0, "remaining": 0}
+
+    base_filters = (
+        Product.tracked.is_(True),
+        Retailer.scraper_type.in_(scrapable_types),
+    )
+
     result = await session.execute(
         select(Product)
-        .where(Product.tracked.is_(True))
+        .join(Retailer, Product.retailer_id == Retailer.id)
+        .where(*base_filters)
         .options(selectinload(Product.brand), selectinload(Product.retailer))
+        .order_by(Product.last_checked.asc().nullsfirst())
+        .limit(limit)
     )
     products = list(result.scalars().all())
 
     checked = 0
     removed = 0
+    failed = 0
     for product in products:
-        scraper_type = product.retailer.scraper_type if product.retailer else "generic"
-        scraper = scrapers.get(scraper_type)
-        if scraper is None:
-            logger.warning(f"No scraper for {scraper_type}, skipping {product.name}")
+        scraper = scrapers.get(product.retailer.scraper_type)
+        if scraper is None:  # defensive — the query filter should prevent this
+            product.last_checked = dt.datetime.utcnow()
+            await session.commit()
             continue
 
         outcome = await check_product_price(session, product, scraper)
@@ -131,9 +173,36 @@ async def check_all_prices(
             removed += 1
         elif outcome.record:
             checked += 1
+        else:
+            failed += 1
+
+    # How many scrapable products are still stale (never checked, or not checked
+    # within a full cycle). This is the number to watch: if it trends down to ~0
+    # the batches are keeping up, if it plateaus high they are not.
+    stale_cutoff = dt.datetime.utcnow() - dt.timedelta(hours=24)
+    remaining = (
+        await session.execute(
+            select(func.count(Product.id))
+            .join(Retailer, Product.retailer_id == Retailer.id)
+            .where(
+                *base_filters,
+                or_(
+                    Product.last_checked.is_(None),
+                    Product.last_checked < stale_cutoff,
+                ),
+            )
+        )
+    ).scalar() or 0
 
     logger.info(
-        f"Price check complete: {checked}/{len(products)} products updated, "
-        f"{removed} removed (no longer available)"
+        f"Price check batch complete: {checked} updated, {removed} removed, "
+        f"{failed} failed (batch of {len(products)}); {remaining} products "
+        f"still awaiting a check this cycle"
     )
-    return checked
+    return {
+        "checked": checked,
+        "removed": removed,
+        "failed": failed,
+        "batch": len(products),
+        "remaining": remaining,
+    }

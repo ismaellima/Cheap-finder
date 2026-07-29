@@ -224,7 +224,9 @@ async def dashboard(
             "stats": {
                 "total_products": total_products,
                 "total_brands": len(brands),
-                "drops_today": len(all_drops),
+                # Every product currently flagged on sale — not a per-day figure.
+                # It was previously labelled "drops today", which it never was.
+                "on_sale_now": len(all_drops),
                 "max_discount_pct": max_discount_pct,
             },
             "unread_count": unread_count,
@@ -675,14 +677,18 @@ async def discover_all(request: Request):
 
 
 async def _check_all_prices_background() -> None:
-    """Run a full price check (and dead-product cleanup) in the background."""
+    """Run one price-check batch (and dead-product cleanup) in the background."""
     from src.tracking.price_checker import check_all_prices
 
     scrapers = _get_working_scrapers()
     try:
         async with async_session() as session:
-            count = await check_all_prices(session, scrapers)
-            logger.info(f"Manual price check complete: {count} products updated")
+            stats = await check_all_prices(session, scrapers)
+            logger.info(
+                f"Manual price check batch complete: {stats['checked']} updated, "
+                f"{stats['removed']} removed, {stats['failed']} failed; "
+                f"{stats['remaining']} still stale"
+            )
     except Exception:
         logger.exception("Manual price check failed")
     finally:
@@ -692,10 +698,11 @@ async def _check_all_prices_background() -> None:
 
 @router.post("/price-check")
 async def price_check_all(request: Request):
-    """Manually trigger a full price check across every tracked product.
+    """Run one price-check batch immediately instead of waiting for the timer.
 
-    Same job the daily scheduler runs — also removes products whose page now
-    returns a confirmed 404, instead of waiting for the next scheduled run.
+    Deliberately one batch, not the whole catalogue: an unbounded sweep is what
+    used to exhaust the instance's memory and die partway through. This just
+    advances the same rolling queue the scheduler works through.
     """
     asyncio.create_task(_check_all_prices_background())
     return RedirectResponse("/?success=discovery_started", status_code=HTTP_303_SEE_OTHER)

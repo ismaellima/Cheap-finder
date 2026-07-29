@@ -16,8 +16,16 @@ class Settings(BaseSettings):
     SLACK_WEBHOOK_URL: str = ""
 
     LOG_LEVEL: str = "INFO"
-    PRICE_CHECK_HOUR: int = 6
+    PRICE_CHECK_HOUR: int = 6  # unused since price checks moved to rolling batches
     REQUEST_DELAY_SECONDS: int = 2
+
+    # Price checks run as small rolling batches rather than one daily sweep.
+    # A full sweep of the catalogue takes hours and never survived a free-tier
+    # restart, so nothing past the first few thousand products was ever reached.
+    # Defaults below cycle the whole catalogue roughly once a day while keeping
+    # any single run well under its own interval.
+    PRICE_CHECK_INTERVAL_MINUTES: int = 30
+    PRICE_CHECK_BATCH_SIZE: int = 300
     SAVE_HTML_SNAPSHOTS: bool = False
 
     # Render deployment
