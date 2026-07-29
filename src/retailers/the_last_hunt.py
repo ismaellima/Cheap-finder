@@ -13,13 +13,12 @@ All products are outlet/clearance so most have discounted prices.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
-import urllib.parse
 
 from src.retailers.base import RetailerBase, ScrapedPrice, ScrapedProduct
+from src.retailers.next_data import extract_next_data, price_from_next_data
 
 logger = logging.getLogger(__name__)
 
@@ -97,89 +96,12 @@ class TheLastHuntScraper(RetailerBase):
             logger.exception(f"{self.name}: Failed to fetch {product_url}")
             return None
 
-        # Parse __NEXT_DATA__ for product page
-        # Product detail uses dehydratedState.queries[0].state.data structure
-        # with commercetools pricing: prices[].value.centAmount (original)
-        # and prices[].discounted.value.centAmount (sale price)
-        match = re.search(
-            r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL
-        )
-        if match:
-            try:
-                nd = json.loads(match.group(1))
-                pp = nd.get("props", {}).get("pageProps", {})
-                ds = pp.get("dehydratedState", {})
-                queries = ds.get("queries", [])
+        next_data = extract_next_data(html)
+        if next_data is None:
+            logger.warning(f"{self.name}: No __NEXT_DATA__ on {product_url}")
+            return None
 
-                for query in queries:
-                    qdata = query.get("state", {}).get("data", {})
-                    if not isinstance(qdata, dict):
-                        continue
-                    # Look for query with variants (product data)
-                    variants = qdata.get("variants", [])
-                    master = qdata.get("masterVariant", {})
-                    # Use masterVariant or first variant
-                    variant = master if master else (variants[0] if variants else None)
-                    if not variant or not isinstance(variant, dict):
-                        continue
-
-                    prices = variant.get("prices", [])
-                    if not prices:
-                        continue
-
-                    p0 = prices[0]
-                    orig_cents = (
-                        p0.get("value", {}).get("centAmount")
-                    )
-                    disc_obj = p0.get("discounted")
-                    if disc_obj and isinstance(disc_obj, dict):
-                        sale_cents = disc_obj.get("value", {}).get("centAmount")
-                    else:
-                        sale_cents = None
-
-                    if sale_cents and orig_cents and sale_cents < orig_cents:
-                        return ScrapedPrice(
-                            price=sale_cents,
-                            original_price=orig_cents,
-                            on_sale=True,
-                            currency="CAD",
-                            available=True,
-                        )
-                    elif orig_cents:
-                        return ScrapedPrice(
-                            price=orig_cents,
-                            currency="CAD",
-                            available=True,
-                        )
-            except (json.JSONDecodeError, KeyError, IndexError):
-                pass
-
-        # Try JSON-LD fallback
-        from bs4 import BeautifulSoup
-
-        soup = BeautifulSoup(html, "html.parser")
-        scripts = soup.find_all("script", {"type": "application/ld+json"})
-        for script in scripts:
-            try:
-                data = json.loads(script.string)
-                if isinstance(data, list):
-                    data = data[0]
-                if data.get("@type") == "Product":
-                    offers = data.get("offers", {})
-                    if isinstance(offers, list):
-                        offers = offers[0] if offers else {}
-                    price = self.parse_price(str(offers.get("price", "")))
-                    if price:
-                        return ScrapedPrice(
-                            price=price,
-                            currency=offers.get("priceCurrency", "CAD"),
-                            available="InStock"
-                            in str(offers.get("availability", "")),
-                        )
-            except (json.JSONDecodeError, AttributeError):
-                continue
-
-        return None
+        return price_from_next_data(next_data)
 
     def _extract_from_next_data(
         self, html: str,

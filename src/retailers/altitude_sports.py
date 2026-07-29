@@ -12,6 +12,7 @@ import re
 import urllib.parse
 
 from src.retailers.base import RetailerBase, ScrapedPrice, ScrapedProduct
+from src.retailers.next_data import extract_next_data, price_from_next_data
 
 logger = logging.getLogger(__name__)
 
@@ -43,69 +44,17 @@ class AltitudeSportsScraper(RetailerBase):
 
     async def get_price(self, product_url: str) -> ScrapedPrice | None:
         try:
-            soup = await self._fetch_soup(product_url)
+            html = await self._fetch(product_url)
         except Exception:
             logger.exception(f"{self.name}: Failed to fetch {product_url}")
             return None
 
-        # Try JSON-LD
-        scripts = soup.find_all("script", {"type": "application/ld+json"})
-        for script in scripts:
-            try:
-                data = json.loads(script.string)
-                if isinstance(data, list):
-                    data = data[0]
-                if data.get("@type") == "Product":
-                    offers = data.get("offers", {})
-                    if isinstance(offers, list):
-                        offers = offers[0] if offers else {}
-                    price = self.parse_price(str(offers.get("price", "")))
-                    if price:
-                        return ScrapedPrice(
-                            price=price,
-                            currency=offers.get("priceCurrency", "CAD"),
-                            available="InStock"
-                            in str(offers.get("availability", "")),
-                        )
-            except (json.JSONDecodeError, AttributeError):
-                continue
+        next_data = extract_next_data(html)
+        if next_data is None:
+            logger.warning(f"{self.name}: No __NEXT_DATA__ on {product_url}")
+            return None
 
-        # Try __NEXT_DATA__ for product page
-        match = re.search(
-            r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', soup.text, re.DOTALL
-        )
-        if match:
-            try:
-                nd = json.loads(match.group(1))
-                pp = nd.get("props", {}).get("pageProps", {})
-                product_data = pp.get("product", {})
-                if product_data:
-                    price_obj = product_data.get("price", {}).get("CAD", {})
-                    cents_list = price_obj.get("centAmount", [])
-                    if cents_list:
-                        price = cents_list[0] if isinstance(cents_list, list) else cents_list
-                        orig_obj = product_data.get("original_price", {}).get("CAD", {})
-                        orig_cents = orig_obj.get("centAmount", [])
-                        orig = orig_cents[0] if orig_cents and isinstance(orig_cents, list) else None
-                        on_sale = orig is not None and orig > price
-                        return ScrapedPrice(
-                            price=price,
-                            original_price=orig if on_sale else None,
-                            on_sale=on_sale,
-                            currency="CAD",
-                            available=True,
-                        )
-            except (json.JSONDecodeError, KeyError, IndexError):
-                pass
-
-        # Try meta tags
-        meta = soup.find("meta", {"property": "product:price:amount"})
-        if meta and meta.get("content"):
-            price = self.parse_price(meta["content"])
-            if price:
-                return ScrapedPrice(price=price)
-
-        return None
+        return price_from_next_data(next_data)
 
     def _extract_from_next_data(self, html: str) -> list[ScrapedProduct]:
         """Extract products from __NEXT_DATA__ Algolia search results."""
