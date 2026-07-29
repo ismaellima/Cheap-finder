@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 from src.retailers.base import RetailerBase, ScrapedPrice, ScrapedProduct
 
@@ -78,12 +79,27 @@ class ShopifyBase(RetailerBase):
 
         return products
 
+    @staticmethod
+    def _to_json_endpoint(product_url: str) -> str:
+        """Build the Shopify product JSON endpoint for a product URL.
+
+        ".json" belongs on the path, not the end of the whole URL. Discovery
+        stores links scraped from search results, which carry Shopify's
+        tracking params (?_pos=&_psq=&_ss=&_v=), so naive concatenation
+        produced ".../handle?_pos=1&_v=1.0.json" — Shopify serves the normal
+        HTML page for that, which then fails to parse as JSON and looks
+        exactly like an unreadable product. The params are search tracking
+        only and mean nothing to the JSON endpoint, so drop them.
+        """
+        parts = urlsplit(product_url)
+        path = parts.path.rstrip("/")
+        if not path.endswith(".json"):
+            path += ".json"
+        return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+
     async def get_price(self, product_url: str) -> ScrapedPrice | None:
         """Get price for a specific product URL using the .json endpoint."""
-        # Convert product URL to JSON endpoint
-        json_url = product_url.rstrip("/")
-        if not json_url.endswith(".json"):
-            json_url += ".json"
+        json_url = self._to_json_endpoint(product_url)
 
         data = await self._fetch_json(json_url)
         if not data or not isinstance(data, dict):
