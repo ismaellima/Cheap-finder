@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select, func
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.responses import StreamingResponse
@@ -409,6 +409,191 @@ async def deals_page(
             "format_price": format_price,
             "is_admin": _is_admin(request),
         },
+    )
+
+
+# --- Scraper status ---
+
+# A product counts as "covered" if it was checked within one full cycle.
+SCRAPER_CYCLE_HOURS = 24
+# If anything was checked this recently, a batch is mid-run right now.
+SCRAPER_ACTIVE_MINUTES = 5
+
+
+def _humanise_delta(seconds: float) -> str:
+    seconds = int(abs(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86400:
+        return f"{seconds // 3600}h {(seconds % 3600) // 60}m"
+    return f"{seconds // 86400}d {(seconds % 86400) // 3600}h"
+
+
+def _naive_utc(value: dt.datetime | None) -> dt.datetime | None:
+    """Drop tzinfo so APScheduler's aware times compare with our naive stamps."""
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    return value
+
+
+async def _scraper_stats(session: AsyncSession) -> dict:
+    """Aggregate per-retailer scrape health in a single query.
+
+    Success is defined as "this product's newest PriceRecord is at least as new
+    as its last_checked stamp". A successful check writes the record and the
+    stamp in the same transaction, so the record lands microseconds later; a
+    failed check stamps last_checked and writes nothing, leaving the newest
+    record far behind. Counting on last_checked alone cannot tell those apart —
+    it advances either way, by design.
+    """
+    now = dt.datetime.utcnow()
+    cycle_cutoff = now - dt.timedelta(hours=SCRAPER_CYCLE_HOURS)
+    active_cutoff = now - dt.timedelta(minutes=SCRAPER_ACTIVE_MINUTES)
+
+    newest_record = (
+        select(
+            PriceRecord.product_id.label("pid"),
+            func.max(PriceRecord.recorded_at).label("newest"),
+        )
+        .group_by(PriceRecord.product_id)
+        .subquery()
+    )
+
+    checked_recently = Product.last_checked >= cycle_cutoff
+    succeeded = and_(checked_recently, newest_record.c.newest >= Product.last_checked)
+
+    rows = (
+        await session.execute(
+            select(
+                Retailer.id,
+                Retailer.name,
+                Retailer.scraper_type,
+                func.count(Product.id).label("tracked"),
+                func.sum(case((checked_recently, 1), else_=0)).label("checked"),
+                func.sum(case((succeeded, 1), else_=0)).label("ok"),
+                func.max(Product.last_checked).label("last_activity"),
+            )
+            .select_from(Retailer)
+            .outerjoin(Product, Product.retailer_id == Retailer.id)
+            .outerjoin(newest_record, newest_record.c.pid == Product.id)
+            .where(Retailer.active.is_(True))
+            .group_by(Retailer.id, Retailer.name, Retailer.scraper_type)
+            .order_by(Retailer.name)
+        )
+    ).all()
+
+    retailers = []
+    tracked_total = checked_total = ok_total = 0
+    last_activity: dt.datetime | None = None
+
+    for row in rows:
+        tracked = row.tracked or 0
+        checked = int(row.checked or 0)
+        ok = int(row.ok or 0)
+        disabled = row.scraper_type in SKIP_SCRAPERS
+
+        if not disabled:
+            tracked_total += tracked
+            checked_total += checked
+            ok_total += ok
+            if row.last_activity and (not last_activity or row.last_activity > last_activity):
+                last_activity = row.last_activity
+
+        retailers.append(
+            {
+                "name": row.name,
+                "scraper_type": row.scraper_type,
+                "tracked": tracked,
+                "checked": checked,
+                "ok": ok,
+                "success_pct": round(ok / checked * 100) if checked else None,
+                "coverage_pct": round(checked / tracked * 100) if tracked else None,
+                "last_activity": row.last_activity,
+                "disabled": disabled,
+            }
+        )
+
+    # Retailers with the most products still unscrapable are the ones worth
+    # fixing next, so surface them rather than burying them in alphabetical order.
+    problems = sorted(
+        (
+            r
+            for r in retailers
+            if not r["disabled"] and r["checked"] and (r["success_pct"] or 0) < 50
+        ),
+        key=lambda r: (-(r["tracked"]), r["name"]),
+    )
+
+    next_run = None
+    try:
+        from src.tracking.scheduler import scheduler
+
+        job = scheduler.get_job("rolling_price_check")
+        if job is not None:
+            next_run = getattr(job, "next_run_time", None)
+    except Exception:  # scheduler not started (e.g. tests) — not worth failing over
+        next_run = None
+
+    return {
+        "retailers": retailers,
+        "problems": problems,
+        "tracked_total": tracked_total,
+        "checked_total": checked_total,
+        "ok_total": ok_total,
+        "failed_total": checked_total - ok_total,
+        "coverage_pct": round(checked_total / tracked_total * 100, 1) if tracked_total else 0.0,
+        "success_pct": round(ok_total / checked_total * 100, 1) if checked_total else None,
+        "remaining": max(tracked_total - checked_total, 0),
+        "running": bool(last_activity and last_activity >= active_cutoff),
+        "last_activity": last_activity,
+        "last_activity_ago": (
+            _humanise_delta((now - last_activity).total_seconds()) if last_activity else None
+        ),
+        "next_run": _naive_utc(next_run),
+        "next_run_in": (
+            _humanise_delta((_naive_utc(next_run) - now).total_seconds())
+            if _naive_utc(next_run) and _naive_utc(next_run) > now
+            else None
+        ),
+        "cycle_hours": SCRAPER_CYCLE_HOURS,
+        "batch_size": settings.PRICE_CHECK_BATCH_SIZE,
+        "interval_minutes": settings.PRICE_CHECK_INTERVAL_MINUTES,
+        "generated_at": now,
+    }
+
+
+@router.get("/scrapers")
+async def scrapers_page(
+    request: Request, session: AsyncSession = Depends(get_session)
+):
+    """Live view of how far through the cycle the price checks are."""
+    unread_result = await session.execute(
+        select(func.count(Notification.id)).where(Notification.read.is_(False))
+    )
+    return templates.TemplateResponse(
+        request,
+        "scrapers.html",
+        {
+            "stats": await _scraper_stats(session),
+            "unread_count": unread_result.scalar() or 0,
+            "is_admin": _is_admin(request),
+        },
+    )
+
+
+@router.get("/scrapers/stats")
+async def scrapers_stats_partial(
+    request: Request, session: AsyncSession = Depends(get_session)
+):
+    """HTMX partial — the page polls this so the numbers stay live."""
+    return templates.TemplateResponse(
+        request,
+        "components/scraper_stats.html",
+        {"stats": await _scraper_stats(session)},
     )
 
 

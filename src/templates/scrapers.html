@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Scraper Status — Cheap Finder{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-2 text-sm text-neutral-500 mb-6">
+  <a href="/" class="hover:text-white transition-colors">Dashboard</a>
+  <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+  </svg>
+  <span class="text-neutral-300">Scraper Status</span>
+</div>
+
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Scraper Status</h1>
+  <p class="text-sm text-neutral-500 mt-1">
+    Prices are checked in rolling batches, oldest first. This shows how far through
+    the current cycle they are and which retailers are actually returning prices.
+  </p>
+</div>
+
+<!-- Polls the partial so the numbers stay live without reloading the page. -->
+<div hx-get="/scrapers/stats"
+     hx-trigger="every 30s"
+     hx-swap="outerHTML">
+  {% include "components/scraper_stats.html" %}
+</div>
+{% endblock %}

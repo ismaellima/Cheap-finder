@@ -1,0 +1,134 @@
+<!-- Live scraper stats. Polled by scrapers.html, so this must stay self-contained. -->
+<div id="scraper-stats">
+
+  <!-- Run state -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div class="flex items-center gap-3">
+      {% if stats.running %}
+      <span class="flex items-center gap-2 text-sm font-medium text-green-500">
+        <span class="relative flex h-2.5 w-2.5">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+        </span>
+        Running now
+      </span>
+      {% else %}
+      <span class="flex items-center gap-2 text-sm font-medium text-neutral-400">
+        <span class="inline-flex rounded-full h-2.5 w-2.5 bg-neutral-600"></span>
+        Idle between batches
+      </span>
+      {% endif %}
+      <span class="text-xs text-neutral-500">
+        {% if stats.last_activity_ago %}last activity {{ stats.last_activity_ago }} ago{% else %}no activity recorded{% endif %}
+      </span>
+    </div>
+    <div class="text-xs text-neutral-500">
+      {% if stats.next_run_in %}next batch in {{ stats.next_run_in }} · {% endif %}
+      {{ stats.batch_size }} products every {{ stats.interval_minutes }}m
+    </div>
+  </div>
+
+  <!-- Cycle completion -->
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-5 mb-4">
+    <div class="flex items-baseline justify-between mb-2">
+      <span class="text-xs font-medium text-neutral-400 uppercase tracking-wider">Cycle completion</span>
+      <span class="text-xs text-neutral-500">checked in the last {{ stats.cycle_hours }}h</span>
+    </div>
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="text-3xl font-semibold text-white dark:text-white light:text-neutral-900">{{ stats.coverage_pct }}%</span>
+      <span class="text-sm text-neutral-500">
+        {{ "{:,}".format(stats.checked_total) }} of {{ "{:,}".format(stats.tracked_total) }} products
+        {% if stats.remaining %}· {{ "{:,}".format(stats.remaining) }} still waiting{% endif %}
+      </span>
+    </div>
+    <div class="w-full h-2 rounded-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 overflow-hidden">
+      <div class="h-full bg-green-500 rounded-full transition-all duration-500" style="width: {{ stats.coverage_pct }}%"></div>
+    </div>
+  </div>
+
+  <!-- Success split -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+      <div class="text-xl sm:text-2xl font-semibold {% if stats.success_pct is not none and stats.success_pct >= 50 %}text-green-500{% else %}text-red-400{% endif %}">
+        {% if stats.success_pct is none %}—{% else %}{{ stats.success_pct }}%{% endif %}
+      </div>
+      <div class="text-xs text-neutral-500 mt-1">scrapes returning a price</div>
+    </div>
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+      <div class="text-xl sm:text-2xl font-semibold text-green-500">{{ "{:,}".format(stats.ok_total) }}</div>
+      <div class="text-xs text-neutral-500 mt-1">priced OK</div>
+    </div>
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+      <div class="text-xl sm:text-2xl font-semibold text-red-400">{{ "{:,}".format(stats.failed_total) }}</div>
+      <div class="text-xs text-neutral-500 mt-1">no price returned</div>
+    </div>
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
+      <div class="text-xl sm:text-2xl font-semibold text-white dark:text-white light:text-neutral-900">{{ "{:,}".format(stats.remaining) }}</div>
+      <div class="text-xs text-neutral-500 mt-1">not yet checked this cycle</div>
+    </div>
+  </div>
+
+  {% if stats.problems %}
+  <div class="bg-red-500/5 border border-red-500/20 rounded-lg p-4 mb-8">
+    <p class="text-xs font-medium text-red-400 uppercase tracking-wider mb-2">Worst performers</p>
+    <p class="text-xs text-neutral-400 mb-3">Pages load but return no price — largest catalogues first.</p>
+    <div class="flex flex-wrap gap-2">
+      {% for r in stats.problems[:6] %}
+      <span class="text-xs px-2.5 py-1 rounded-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 text-neutral-300 dark:text-neutral-300 light:text-neutral-700">
+        {{ r.name }} <span class="text-red-400 font-medium">{{ r.success_pct }}%</span>
+        <span class="text-neutral-500">({{ "{:,}".format(r.tracked) }})</span>
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Per-retailer breakdown -->
+  <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-3">By retailer</h2>
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg overflow-x-auto">
+    <table class="w-full text-sm min-w-[640px]">
+      <thead>
+        <tr class="text-xs text-neutral-500 uppercase tracking-wider border-b border-neutral-800 dark:border-neutral-800 light:border-neutral-200">
+          <th class="text-left font-medium px-4 py-3">Retailer</th>
+          <th class="text-right font-medium px-4 py-3">Tracked</th>
+          <th class="text-right font-medium px-4 py-3">Checked</th>
+          <th class="text-left font-medium px-4 py-3 w-48">Success</th>
+          <th class="text-right font-medium px-4 py-3">Last seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in stats.retailers %}
+        <tr class="border-b border-neutral-800/60 dark:border-neutral-800/60 light:border-neutral-100 last:border-0">
+          <td class="px-4 py-2.5">
+            <span class="text-neutral-200 dark:text-neutral-200 light:text-neutral-800">{{ r.name }}</span>
+            {% if r.disabled %}
+            <span class="ml-2 text-[10px] uppercase tracking-wider text-neutral-500 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 px-1.5 py-0.5 rounded">disabled</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right text-neutral-400 tabular-nums">{{ "{:,}".format(r.tracked) }}</td>
+          <td class="px-4 py-2.5 text-right text-neutral-400 tabular-nums">{{ "{:,}".format(r.checked) }}</td>
+          <td class="px-4 py-2.5">
+            {% if r.success_pct is none %}
+            <span class="text-neutral-600 text-xs">not checked yet</span>
+            {% else %}
+            <div class="flex items-center gap-2">
+              <div class="flex-1 h-1.5 rounded-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 overflow-hidden">
+                <div class="h-full rounded-full {% if r.success_pct >= 50 %}bg-green-500{% else %}bg-red-400{% endif %}" style="width: {{ r.success_pct }}%"></div>
+              </div>
+              <span class="text-xs tabular-nums w-9 text-right {% if r.success_pct >= 50 %}text-green-500{% else %}text-red-400{% endif %}">{{ r.success_pct }}%</span>
+            </div>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right text-xs text-neutral-500 tabular-nums">
+            {% if r.last_activity %}{{ r.last_activity.strftime('%b %d %H:%M') }}{% else %}never{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="text-xs text-neutral-600 mt-4">
+    Updated {{ stats.generated_at.strftime('%H:%M:%S') }} UTC · refreshes automatically every 30s
+  </p>
+</div>
