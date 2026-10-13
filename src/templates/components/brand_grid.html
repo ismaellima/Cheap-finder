@@ -1,0 +1,246 @@
+<!-- Brand browser: pass the context from _brand_browser_context(). Filtering and
+     sorting happen client-side; the brand list is small enough to hold in the page. -->
+<style>
+  .category-filter-chip{ font-size:11px; color:#a1a1aa; background:transparent; border:1px solid #262626; padding:6px 12px; border-radius:9999px; cursor:pointer; transition:.15s; white-space:nowrap; }
+  .category-filter-chip:hover{ color:#fff; border-color:#525252; }
+  .category-filter-chip.active-chip{ background:#fafafa; color:#0a0a0a; border-color:#fafafa; }
+  html:not(.dark) .category-filter-chip{ color:#525252; border-color:#e5e5e5; }
+  html:not(.dark) .category-filter-chip:hover{ color:#0a0a0a; border-color:#a3a3a3; }
+  html:not(.dark) .category-filter-chip.active-chip{ background:#0a0a0a; color:#fafafa; border-color:#0a0a0a; }
+</style>
+
+<!-- Controls -->
+<div class="flex flex-col gap-3 mb-5">
+  <div class="flex flex-wrap items-center gap-2">
+    <div class="relative flex-1 min-w-[12rem] sm:max-w-xs">
+      <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+      <input type="search" id="brand-filter" placeholder="Find a brand…" aria-label="Find a brand" autocomplete="off"
+             class="w-full bg-neutral-900 light:bg-white border border-neutral-800 light:border-neutral-200 rounded-lg pl-9 pr-3 py-2 text-sm text-white light:text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-green-500 transition-colors">
+    </div>
+    <button type="button" id="brand-deals-toggle" aria-pressed="false"
+            class="text-xs px-3 py-2 rounded-lg border border-neutral-800 light:border-neutral-200 text-neutral-400 hover:text-white transition-colors flex items-center gap-1.5">
+      <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+      With deals
+    </button>
+    <select id="brand-sort-select" aria-label="Sort brands"
+            class="bg-neutral-900 light:bg-white border border-neutral-800 light:border-neutral-200 rounded-lg px-2.5 py-2 text-xs text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors cursor-pointer">
+      <option value="deals">Most deals</option>
+      <option value="discount">Biggest markdown</option>
+      <option value="name">Name (A–Z)</option>
+      <option value="products">Most products</option>
+    </select>
+    <span id="brand-count" class="text-xs text-neutral-500 sm:ml-auto" aria-live="polite">{{ brands | length }} brands</span>
+  </div>
+
+  {% if categories %}
+  <div class="flex items-center gap-1.5 overflow-x-auto pb-1 -mb-1" id="category-filters">
+    <button type="button" data-category="" class="category-filter-chip active-chip">All</button>
+    {% for cat in categories %}
+    <button type="button" data-category="{{ cat }}" class="category-filter-chip capitalize">{{ cat }}</button>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- Grid -->
+<div id="brand-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+  {% for brand in brands %}
+  {% set deals = deal_counts_by_brand.get(brand.id, 0) %}
+  {% set imgs = brand_previews.get(brand.id, []) %}
+  {% set aliases = (brand.aliases | from_json) if brand.aliases else [] %}
+  <a href="/brands/{{ brand.id }}"
+     class="brand-card group flex flex-col bg-neutral-900 light:bg-white border border-neutral-800 light:border-neutral-200 rounded-lg overflow-hidden hover:border-neutral-600 light:hover:border-neutral-400 transition-all duration-200"
+     data-category="{{ brand.category }}"
+     data-name="{{ brand.name }}"
+     data-search="{{ ([brand.name] + aliases) | join(' ') | lower }}"
+     data-products="{{ brand_stats[brand.id].product_count }}"
+     data-deals="{{ deals }}"
+     data-discount="{{ brand_max_discount.get(brand.id, 0) }}">
+
+    <!-- Preview strip: the brand's best current deals -->
+    <div class="relative grid grid-cols-3 gap-px bg-neutral-800 light:bg-neutral-200">
+      {% for i in range(3) %}
+      <div class="relative aspect-square bg-neutral-800 light:bg-neutral-100 overflow-hidden">
+        {% if imgs[i] is defined %}
+        <img src="{{ imgs[i] }}" alt="" loading="lazy"
+             class="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+             onerror="this.remove()">
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% if not imgs %}
+      <div class="absolute inset-0 flex items-center justify-center text-3xl font-semibold text-neutral-600 light:text-neutral-400 select-none">
+        {{ brand.name[:1] }}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="p-4 flex-1 flex flex-col gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <h3 class="font-medium text-white light:text-neutral-900 group-hover:text-green-500 transition-colors truncate">{{ brand.name }}</h3>
+        {% if brand.category %}
+        <span class="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded capitalize"
+              style="background-color: color-mix(in srgb, {{ brand_colors[brand.id] }} 16%, transparent); color: {{ brand_colors[brand.id] }};">
+          {{ brand.category }}
+        </span>
+        {% endif %}
+      </div>
+
+      {% if deals %}
+      <div class="text-sm text-green-500 font-medium">
+        Up to −{{ brand_max_discount.get(brand.id, 0) }}%
+        <span class="text-neutral-500 font-normal">· {{ "{:,}".format(deals) }} deal{{ 's' if deals != 1 else '' }}</span>
+      </div>
+      {% else %}
+      <div class="text-sm text-neutral-500">No deals right now</div>
+      {% endif %}
+
+      <div class="mt-auto pt-1 text-xs text-neutral-500 truncate"
+           title="{{ brand_retailers_map[brand.id] | join(', ') }}">
+        {{ "{:,}".format(brand_stats[brand.id].product_count) }} products · {{ brand_stats[brand.id].retailer_count }} retailer{{ 's' if brand_stats[brand.id].retailer_count != 1 else '' }}
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+
+  {% if is_admin %}
+  <button id="add-brand-btn" type="button" onclick="document.getElementById('add-brand-modal').classList.remove('hidden')"
+          class="flex flex-col items-center justify-center min-h-[12rem] border-2 border-dashed border-neutral-800 light:border-neutral-300 rounded-lg p-5 text-neutral-600 hover:text-neutral-400 hover:border-neutral-600 transition-all duration-200">
+    <svg class="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"/>
+    </svg>
+    <span class="text-sm">Add Brand</span>
+  </button>
+  {% endif %}
+</div>
+
+<div id="brand-empty" class="hidden bg-neutral-900 light:bg-white border border-neutral-800 light:border-neutral-200 rounded-lg p-10 text-center">
+  <p class="text-neutral-500 text-sm">No brands match.</p>
+  <button type="button" id="brand-reset" class="mt-2 text-sm text-green-500 hover:text-green-400">Clear filters</button>
+</div>
+
+
+{% if is_admin %}
+<!-- Add Brand Modal -->
+<div id="add-brand-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-xl p-6 w-full max-w-md mx-4">
+    <h3 class="text-lg font-semibold text-white dark:text-white light:text-neutral-900 mb-4">Add Brand</h3>
+    <form method="POST" action="/add-brand">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Brand Name</label>
+          <input type="text" name="name" required
+                 class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors"
+                 placeholder="e.g. Arc'teryx">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Category</label>
+          <input type="text" name="category"
+                 class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors"
+                 placeholder="e.g. outdoor, running, fashion">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Alert Threshold (%)</label>
+          <input type="number" name="alert_threshold_pct" value="10" min="1" max="90"
+                 class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2 text-sm text-white dark:text-white light:text-neutral-900 focus:outline-none focus:border-green-500 transition-colors">
+        </div>
+      </div>
+      <div class="flex items-center gap-3 mt-6">
+        <button type="submit"
+                class="flex-1 bg-green-600 hover:bg-green-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors">
+          Add Brand
+        </button>
+        <button type="button" onclick="document.getElementById('add-brand-modal').classList.add('hidden')"
+                class="flex-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-sm font-medium py-2 px-4 rounded-lg transition-colors">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+
+<script>
+(function () {
+  var grid = document.getElementById('brand-grid');
+  if (!grid) return;
+  var cards = Array.from(grid.querySelectorAll('.brand-card'));
+  var addBtn = document.getElementById('add-brand-btn');
+  var input = document.getElementById('brand-filter');
+  var dealsBtn = document.getElementById('brand-deals-toggle');
+  var sortSelect = document.getElementById('brand-sort-select');
+  var countEl = document.getElementById('brand-count');
+  var emptyEl = document.getElementById('brand-empty');
+  var chips = document.querySelectorAll('.category-filter-chip');
+  var state = { q: '', category: '', dealsOnly: false };
+
+  function apply() {
+    var q = state.q.trim().toLowerCase();
+    var shown = 0;
+    cards.forEach(function (card) {
+      var ok = (!q || card.dataset.search.indexOf(q) !== -1)
+        && (!state.category || card.dataset.category === state.category)
+        && (!state.dealsOnly || +card.dataset.deals > 0);
+      card.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    countEl.textContent = shown === cards.length ? cards.length + ' brands' : shown + ' of ' + cards.length + ' brands';
+    emptyEl.classList.toggle('hidden', shown > 0);
+    if (addBtn) addBtn.style.display = (q || state.category || state.dealsOnly) ? 'none' : '';
+  }
+
+  function sort(mode) {
+    cards.sort(function (a, b) {
+      if (mode === 'name') return a.dataset.name.localeCompare(b.dataset.name);
+      if (mode === 'products') return b.dataset.products - a.dataset.products;
+      if (mode === 'discount') return (b.dataset.discount - a.dataset.discount) || (b.dataset.deals - a.dataset.deals);
+      return (b.dataset.deals - a.dataset.deals) || a.dataset.name.localeCompare(b.dataset.name);
+    });
+    cards.forEach(function (card) { grid.appendChild(card); });
+    if (addBtn) grid.appendChild(addBtn);
+  }
+
+  function setDealsOnly(on) {
+    state.dealsOnly = on;
+    dealsBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    dealsBtn.classList.toggle('border-green-500/40', on);
+    dealsBtn.classList.toggle('bg-green-500/10', on);
+    dealsBtn.classList.toggle('text-green-500', on);
+    dealsBtn.classList.toggle('text-neutral-400', !on);
+  }
+
+  function setCategory(cat) {
+    state.category = cat;
+    chips.forEach(function (c) { c.classList.toggle('active-chip', c.dataset.category === cat); });
+  }
+
+  input.addEventListener('input', function () { state.q = input.value; apply(); });
+  // Enter jumps straight to the brand when exactly one matches
+  input.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    var visible = cards.filter(function (c) { return c.style.display !== 'none'; });
+    if (visible.length === 1) window.location = visible[0].href;
+  });
+  dealsBtn.addEventListener('click', function () { setDealsOnly(!state.dealsOnly); apply(); });
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () { setCategory(chip.dataset.category); apply(); });
+  });
+  sortSelect.addEventListener('change', function () { sort(sortSelect.value); });
+  document.getElementById('brand-reset').addEventListener('click', function () {
+    input.value = ''; state.q = ''; setDealsOnly(false); setCategory(''); apply();
+  });
+
+  // "/" focuses the brand search, like most sites
+  document.addEventListener('keydown', function (e) {
+    var tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      e.preventDefault(); input.focus();
+    }
+  });
+
+  sort(sortSelect.value);
+})();
+</script>

@@ -7,7 +7,7 @@ import logging
 import re
 import time
 from collections import Counter
-from typing import Any, Dict
+from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -156,8 +156,112 @@ def select_rail_drops(candidates) -> list:
     return chosen
 
 
-DEALS_PAGE_SIZES = (8, 16, 24)
+# Multiples of 4 and 5 so the 4/5-column grids end on a full row
+DEALS_PAGE_SIZES = (20, 40, 80)
 DEALS_MAX_PER_PAGE = 200
+
+
+async def _load_on_sale_products(session: AsyncSession) -> list:
+    """Every product currently flagged on sale with a usable price pair."""
+    result = await session.execute(
+        select(Product)
+        .where(
+            Product.on_sale.is_(True),
+            Product.original_price.isnot(None),
+            Product.original_price > 0,
+            Product.current_price.isnot(None),
+        )
+        .options(selectinload(Product.brand), selectinload(Product.retailer))
+        .order_by(Product.last_checked.desc().nullslast())
+    )
+    return list(result.scalars().all())
+
+
+BRAND_PREVIEW_IMAGES = 3
+
+
+async def _brand_browser_context(
+    session: AsyncSession, brands: list, all_drops: list
+) -> dict:
+    """Everything the brand browser grid (components/brand_grid.html) needs."""
+    brand_ids = [b.id for b in brands]
+
+    # Product counts per brand (one query)
+    product_counts_result = await session.execute(
+        select(Product.brand_id, func.count(Product.id).label("cnt"))
+        .where(Product.brand_id.in_(brand_ids))
+        .group_by(Product.brand_id)
+    )
+    product_counts = {row.brand_id: row.cnt for row in product_counts_result}
+
+    # Retailer names per brand (one query); the count is just its length
+    retailers_by_brand_result = await session.execute(
+        select(BrandRetailer.brand_id, Retailer.name)
+        .join(Retailer, BrandRetailer.retailer_id == Retailer.id)
+        .where(BrandRetailer.brand_id.in_(brand_ids))
+        .order_by(Retailer.name)
+    )
+    brand_retailers_map: Dict[int, List[str]] = {b.id: [] for b in brands}
+    for row in retailers_by_brand_result:
+        brand_retailers_map[row.brand_id].append(row.name)
+
+    brand_stats = {
+        b.id: {
+            "product_count": product_counts.get(b.id, 0),
+            "retailer_count": len(brand_retailers_map[b.id]),
+        }
+        for b in brands
+    }
+
+    # Preview thumbnails: the brand's biggest current markdowns first, so the
+    # card shows what's worth clicking into. Distinct URLs only — size
+    # variants of one item share a photo.
+    deal_counts_by_brand = Counter(p.brand_id for p in all_drops)
+    brand_max_discount: Dict[int, int] = {}
+    brand_previews: Dict[int, List[str]] = {b.id: [] for b in brands}
+    for p in sorted(all_drops, key=_discount_pct, reverse=True):
+        brand_max_discount.setdefault(p.brand_id, int(_discount_pct(p)))
+        imgs = brand_previews.get(p.brand_id)
+        url = p.thumbnail_url or p.image_url
+        if imgs is not None and url and url not in imgs and len(imgs) < BRAND_PREVIEW_IMAGES:
+            imgs.append(url)
+
+    # Brands without enough deals fall back to any of their product photos.
+    short = [bid for bid, imgs in brand_previews.items() if len(imgs) < BRAND_PREVIEW_IMAGES]
+    if short:
+        img_col = func.coalesce(func.nullif(Product.thumbnail_url, ""), Product.image_url)
+        ranked = (
+            select(
+                Product.brand_id.label("bid"),
+                img_col.label("img"),
+                func.row_number()
+                .over(partition_by=Product.brand_id, order_by=Product.id.desc())
+                .label("rn"),
+            )
+            .where(Product.brand_id.in_(short), img_col.isnot(None), img_col != "")
+            .subquery()
+        )
+        fallback = await session.execute(
+            select(ranked.c.bid, ranked.c.img).where(ranked.c.rn <= BRAND_PREVIEW_IMAGES * 4)
+        )
+        for row in fallback:
+            imgs = brand_previews[row.bid]
+            if row.img not in imgs and len(imgs) < BRAND_PREVIEW_IMAGES:
+                imgs.append(row.img)
+
+    return {
+        "brands": brands,
+        "brand_stats": brand_stats,
+        "brand_retailers_map": brand_retailers_map,
+        "brand_colors": {
+            b.id: CATEGORY_COLORS.get((b.category or "").lower(), DEFAULT_CATEGORY_COLOR)
+            for b in brands
+        },
+        "deal_counts_by_brand": deal_counts_by_brand,
+        "brand_max_discount": brand_max_discount,
+        "brand_previews": brand_previews,
+        "categories": sorted({b.category for b in brands if b.category}),
+    }
 
 
 @router.get("/")
@@ -187,18 +291,7 @@ async def dashboard(
 
     # All on-sale products — feeds the stat strip, the capped "Today's Best
     # Drops" rail, and the per-brand deal-count badges below.
-    drops_result = await session.execute(
-        select(Product)
-        .where(
-            Product.on_sale.is_(True),
-            Product.original_price.isnot(None),
-            Product.original_price > 0,
-            Product.current_price.isnot(None),
-        )
-        .options(selectinload(Product.brand), selectinload(Product.retailer))
-        .order_by(Product.last_checked.desc().nullslast())
-    )
-    all_drops = drops_result.scalars().all()
+    all_drops = await _load_on_sale_products(session)
 
     # Restrict the rail to drops we have actually re-confirmed recently.
     # Ranking every on-sale product by discount froze the rail solid: the top
@@ -226,7 +319,6 @@ async def dashboard(
 
     rail_drops = select_rail_drops(drops_by_discount)
 
-    deal_counts_by_brand = Counter(p.brand_id for p in all_drops)
     max_discount_pct = int(max((_discount_pct(p) for p in all_drops), default=0))
 
     # Unread notification count
@@ -235,61 +327,14 @@ async def dashboard(
     )
     unread_count = unread_result.scalar() or 0
 
-    # Brand stats + retailer names — bulk queries to avoid N+1
-    brand_ids = [b.id for b in brands]
-
-    # Product counts per brand (one query)
-    product_counts_result = await session.execute(
-        select(Product.brand_id, func.count(Product.id).label("cnt"))
-        .where(Product.brand_id.in_(brand_ids))
-        .group_by(Product.brand_id)
-    )
-    product_counts = {row.brand_id: row.cnt for row in product_counts_result}
-
-    # Retailer counts per brand (one query)
-    retailer_counts_result = await session.execute(
-        select(BrandRetailer.brand_id, func.count(BrandRetailer.id).label("cnt"))
-        .where(BrandRetailer.brand_id.in_(brand_ids))
-        .group_by(BrandRetailer.brand_id)
-    )
-    retailer_counts = {row.brand_id: row.cnt for row in retailer_counts_result}
-
-    brand_stats = {
-        b.id: {
-            "product_count": product_counts.get(b.id, 0),
-            "retailer_count": retailer_counts.get(b.id, 0),
-        }
-        for b in brands
-    }
-
-    # Retailer names per brand (one query)
-    retailers_by_brand_result = await session.execute(
-        select(BrandRetailer.brand_id, Retailer.name)
-        .join(Retailer, BrandRetailer.retailer_id == Retailer.id)
-        .where(BrandRetailer.brand_id.in_(brand_ids))
-        .order_by(Retailer.name)
-    )
-    brand_retailers_map: dict[int, list[str]] = {b.id: [] for b in brands}
-    for row in retailers_by_brand_result:
-        brand_retailers_map[row.brand_id].append(row.name)
-
-    total_products = sum(product_counts.values())
-    categories = sorted({b.category for b in brands if b.category})
-    brand_colors = {
-        b.id: CATEGORY_COLORS.get(b.category.lower(), DEFAULT_CATEGORY_COLOR)
-        for b in brands
-    }
+    brand_ctx = await _brand_browser_context(session, brands, all_drops)
+    total_products = sum(st["product_count"] for st in brand_ctx["brand_stats"].values())
 
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
-            "brands": brands,
-            "brand_stats": brand_stats,
-            "brand_retailers_map": brand_retailers_map,
-            "brand_colors": brand_colors,
-            "deal_counts_by_brand": deal_counts_by_brand,
-            "categories": categories,
+            **brand_ctx,
             "rail_drops": rail_drops,
             "rail_verified_days": RAIL_VERIFIED_DAYS,
             "stats": {
@@ -315,7 +360,7 @@ async def deals_page(
     brand: int = 0,
     sort: str = "discount",
     page: int = 1,
-    per_page: int = 8,
+    per_page: int = DEALS_PAGE_SIZES[0],
     session: AsyncSession = Depends(get_session),
 ):
     """Full, filterable, paginated list of every on-sale product."""
@@ -1052,6 +1097,34 @@ async def search_products(
     )
 
 
+@router.get("/brands")
+async def brands_page(
+    request: Request, session: AsyncSession = Depends(get_session)
+):
+    """Browse every tracked brand: search, category, deals-only."""
+    brands = (
+        await session.execute(
+            select(Brand).where(Brand.active.is_(True)).order_by(Brand.name)
+        )
+    ).scalars().all()
+    all_drops = await _load_on_sale_products(session)
+    unread_count = (
+        await session.execute(
+            select(func.count(Notification.id)).where(Notification.read.is_(False))
+        )
+    ).scalar() or 0
+
+    return templates.TemplateResponse(
+        request,
+        "brands.html",
+        {
+            **await _brand_browser_context(session, brands, all_drops),
+            "unread_count": unread_count,
+            "is_admin": _is_admin(request),
+        },
+    )
+
+
 @router.get("/brands/{brand_id}")
 async def brand_detail(
     request: Request,
@@ -1063,7 +1136,8 @@ async def brand_detail(
     per_page: int = 40,
     q: str = "",
     gender: str = "",
-    sort: str = "price-asc",
+    sort: str = "discount",
+    sale: str = "",
 ):
     brand = await session.get(Brand, brand_id)
     if not brand:
@@ -1082,15 +1156,35 @@ async def brand_detail(
     if gender and gender != "all":
         query = query.where(Product.gender == gender)
 
+    if sale:
+        query = query.where(Product.on_sale.is_(True))
+
     # Sort
-    if sort == "price-desc":
+    if sort == "price-asc":
+        query = query.order_by(Product.current_price.asc().nullslast())
+    elif sort == "price-desc":
         query = query.order_by(Product.current_price.desc().nullslast())
     elif sort == "name-asc":
         query = query.order_by(Product.name.asc())
     elif sort == "name-desc":
         query = query.order_by(Product.name.desc())
-    else:  # default: price-asc
-        query = query.order_by(Product.current_price.asc().nullslast())
+    else:  # default: biggest discount first, then full-price items cheapest first
+        sort = "discount"
+        discount_expr = case(
+            (
+                and_(
+                    Product.on_sale.is_(True),
+                    Product.original_price > 0,
+                    Product.current_price.isnot(None),
+                ),
+                (Product.original_price - Product.current_price) * 100.0 / Product.original_price,
+            ),
+            else_=None,
+        )
+        query = query.order_by(
+            discount_expr.desc().nullslast(),
+            Product.current_price.asc().nullslast(),
+        )
 
     # Count total for pagination
     count_q = select(func.count()).select_from(query.subquery())
@@ -1193,6 +1287,7 @@ async def brand_detail(
             "current_q": q,
             "current_gender": gender,
             "current_sort": sort,
+            "current_sale": "1" if sale else "",
             "has_gender_data": has_gender_data,
             "cheapest_ids": cheapest_ids,
         },

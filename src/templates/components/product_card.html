@@ -1,5 +1,7 @@
 <!-- Product card component: pass product, format_price -->
-<a href="/products/{{ product.id }}" class="group block bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg overflow-hidden hover:border-neutral-600 dark:hover:border-neutral-600 light:hover:border-neutral-400 transition-all duration-200">
+<!-- The product name's link is stretched over the whole card (see .stretched-link in base.html),
+     so the card opens the detail page while the heart and the shop strip stay separately clickable. -->
+<div class="group relative h-full flex flex-col bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg overflow-hidden hover:border-neutral-600 dark:hover:border-neutral-600 light:hover:border-neutral-400 transition-all duration-200">
   <!-- Image -->
   <div class="aspect-square bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 overflow-hidden relative">
     {% if cheapest_ids is defined and product.id in cheapest_ids %}
@@ -8,8 +10,8 @@
     <!-- Wishlist heart -->
     <button onclick="toggleWishlist({{ product.id }}, event)"
             data-wishlist-id="{{ product.id }}"
-            class="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-sm text-neutral-600 hover:text-red-500 transition-colors"
-            title="Save to wishlist">
+            class="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-sm text-white hover:text-red-500 transition-colors"
+            title="Save to wishlist" aria-label="Save {{ product.name }} to wishlist" aria-pressed="false">
       <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
         <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
       </svg>
@@ -37,23 +39,16 @@
   </div>
 
   <!-- Info -->
-  <div class="p-4 space-y-2">
-    <!-- Brand + Retailer -->
-    <div class="flex items-center justify-between">
-      <span class="text-xs font-medium text-neutral-500 uppercase tracking-wider">
-        {{ product.brand.name if product.brand else '' }}
-      </span>
-      {% if product.retailer %}
-      <span class="text-xs text-neutral-600 dark:text-neutral-600 light:text-neutral-400">
-        {{ product.retailer.name }}
-      </span>
-      {% endif %}
+  <div class="p-3 sm:p-4 space-y-2 flex-1">
+    <!-- Brand -->
+    <div class="text-xs font-medium text-neutral-500 uppercase tracking-wider truncate">
+      {{ product.brand.name if product.brand else '' }}
     </div>
 
     <!-- Product name + gender badge -->
     <div class="flex items-start justify-between gap-1">
       <h3 class="text-sm text-neutral-200 dark:text-neutral-200 light:text-neutral-800 font-medium leading-tight line-clamp-2">
-        {{ product.name }}
+        <a href="/products/{{ product.id }}" class="stretched-link focus:outline-none">{{ product.name }}</a>
       </h3>
       {% if product.gender %}
       <span class="flex-shrink-0 text-[10px] font-medium uppercase px-1.5 py-0.5 rounded
@@ -66,7 +61,7 @@
     </div>
 
     <!-- Price -->
-    <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span class="text-sm sm:text-base font-semibold {% if product.on_sale %}text-green-500{% else %}text-white dark:text-white light:text-neutral-900{% endif %}">
         {{ format_price(product.current_price) }}
       </span>
@@ -92,4 +87,16 @@
     </div>
     {% endif %}
   </div>
-</a>
+
+  <!-- Straight to the store, skipping the detail page -->
+  {% if product.url %}
+  <a href="{{ product.url }}" target="_blank" rel="noopener"
+     class="relative z-10 flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-t border-neutral-800 dark:border-neutral-800 light:border-neutral-200 text-xs text-neutral-400 hover:text-green-500 hover:bg-green-500/5 transition-colors"
+     title="Open on {{ product.retailer.name if product.retailer else 'the retailer site' }}">
+    <span class="truncate">Shop at <span class="font-medium">{{ product.retailer.name if product.retailer else 'retailer' }}</span></span>
+    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+    </svg>
+  </a>
+  {% endif %}
+</div>

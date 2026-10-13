@@ -10,54 +10,45 @@
       </a>
 
       <!-- Nav links + search (desktop) -->
+      {% set path = request.url.path %}
+      {% set nav_items = [
+        ('/', 'Dashboard', path == '/' or path.startswith('/products')),
+        ('/brands', 'Brands', path.startswith('/brands')),
+        ('/deals', 'Deals', path.startswith('/deals')),
+        ('/suggest-retailer', 'Retailers', path.startswith('/suggest-retailer')),
+        ('/scrapers', 'Status', path.startswith('/scrapers')),
+        ('/alerts', 'Alerts', path.startswith('/alerts')),
+      ] %}
       <div class="hidden sm:flex items-center gap-5 text-sm">
-        <a href="/" class="text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors">Dashboard</a>
-        <a href="/suggest-retailer" class="text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors">Retailers</a>
-        <a href="/scrapers" class="text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors">Status</a>
-        <a href="/alerts" class="text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors">Alerts</a>
-        <a href="/notifications" class="text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors relative">
-          Notifications
-          {% if unread_count > 0 %}
-          <span class="absolute -top-2 -right-4 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-            {{ unread_count }}
-          </span>
-          {% endif %}
-        </a>
+        {% for href, label, active in nav_items %}
+        <a href="{{ href }}"
+           {% if active %}aria-current="page"{% endif %}
+           class="transition-colors {% if active %}text-white dark:text-white light:text-neutral-900 font-medium{% else %}text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900{% endif %}">{{ label }}</a>
+        {% endfor %}
 
         <!-- Search bar -->
         <form action="/search" method="GET" class="relative ml-2">
           <svg class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
-          <input type="text" name="q" placeholder="Search products..."
+          <input type="search" name="q" placeholder="Search products..." aria-label="Search products"
+                 value="{{ request.query_params.get('q', '') if path.startswith('/search') else '' }}"
                  class="w-44 lg:w-56 bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white dark:text-white light:text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-green-500 focus:w-72 transition-all">
         </form>
       </div>
 
-      <!-- Right side: hamburger (mobile) + theme toggle + notification bell -->
+      <!-- Right side: wishlist + theme toggle + account + hamburger (mobile) -->
       <div class="flex items-center gap-4">
         <!-- Wishlist (desktop only) -->
-        <a href="/wishlist" class="hidden sm:block relative text-neutral-400 hover:text-red-500 transition-colors" title="Wishlist">
+        <a href="/wishlist" class="hidden sm:block relative text-neutral-400 hover:text-red-500 transition-colors" title="Wishlist" aria-label="Wishlist">
           <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
           </svg>
           <span class="wishlist-count-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 items-center justify-center font-medium" style="display:none;"></span>
         </a>
 
-        <!-- Notification bell (desktop only) -->
-        <a href="/notifications" class="hidden sm:block relative text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-          </svg>
-          {% if unread_count > 0 %}
-          <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
-            {{ unread_count }}
-          </span>
-          {% endif %}
-        </a>
-
         <!-- Theme toggle -->
-        <button onclick="toggleTheme()" class="text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors" title="Toggle theme">
+        <button onclick="toggleTheme()" class="text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors" title="Toggle theme" aria-label="Toggle dark mode">
           <svg id="theme-icon-dark" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
           </svg>
@@ -72,7 +63,7 @@
           <form method="POST" action="/logout" class="inline">
             <button type="submit"
                     class="text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors"
-                    title="Sign out">
+                    title="Sign out" aria-label="Sign out">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                       d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
@@ -83,7 +74,7 @@
           <!-- Login link for visitors -->
           <a href="/login"
              class="text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors"
-             title="Admin login">
+             title="Admin login" aria-label="Admin login">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
@@ -93,7 +84,7 @@
         {% endif %}
 
         <!-- Hamburger menu button (mobile only) -->
-        <button onclick="toggleMobileMenu()" class="sm:hidden text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors" title="Menu">
+        <button onclick="toggleMobileMenu()" id="mobile-menu-btn" class="sm:hidden text-neutral-400 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors" title="Menu" aria-label="Menu" aria-expanded="false" aria-controls="mobile-menu">
           <svg id="menu-icon-open" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
@@ -110,12 +101,18 @@
     <div class="px-4 py-3 space-y-1">
       <!-- Mobile search -->
       <form action="/search" method="GET" class="mb-2">
-        <input type="text" name="q" placeholder="Search products..."
+        <input type="search" name="q" placeholder="Search products..." aria-label="Search products"
                class="w-full bg-neutral-800 dark:bg-neutral-800 light:bg-neutral-100 border border-neutral-700 dark:border-neutral-700 light:border-neutral-300 rounded-lg px-3 py-2.5 text-sm text-white dark:text-white light:text-neutral-900 placeholder-neutral-500 focus:outline-none focus:border-green-500">
       </form>
 
       <a href="/" class="block px-3 py-3 rounded-lg text-sm text-neutral-300 dark:text-neutral-300 light:text-neutral-600 hover:bg-neutral-800 dark:hover:bg-neutral-800 light:hover:bg-neutral-100 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors">
         Dashboard
+      </a>
+      <a href="/brands" class="block px-3 py-3 rounded-lg text-sm text-neutral-300 dark:text-neutral-300 light:text-neutral-600 hover:bg-neutral-800 dark:hover:bg-neutral-800 light:hover:bg-neutral-100 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors">
+        Brands
+      </a>
+      <a href="/deals" class="block px-3 py-3 rounded-lg text-sm text-neutral-300 dark:text-neutral-300 light:text-neutral-600 hover:bg-neutral-800 dark:hover:bg-neutral-800 light:hover:bg-neutral-100 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors">
+        Deals
       </a>
       <a href="/suggest-retailer" class="block px-3 py-3 rounded-lg text-sm text-neutral-300 dark:text-neutral-300 light:text-neutral-600 hover:bg-neutral-800 dark:hover:bg-neutral-800 light:hover:bg-neutral-100 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors">
         Retailers
@@ -130,14 +127,6 @@
         Wishlist
         <span class="wishlist-count-badge bg-red-500 text-white text-xs rounded-full w-5 h-5 items-center justify-center font-medium" style="display:none;"></span>
       </a>
-      <a href="/notifications" class="flex items-center justify-between px-3 py-3 rounded-lg text-sm text-neutral-300 dark:text-neutral-300 light:text-neutral-600 hover:bg-neutral-800 dark:hover:bg-neutral-800 light:hover:bg-neutral-100 hover:text-white dark:hover:text-white light:hover:text-neutral-900 transition-colors">
-        Notifications
-        {% if unread_count > 0 %}
-        <span class="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-          {{ unread_count }}
-        </span>
-        {% endif %}
-      </a>
     </div>
   </div>
 </nav>
@@ -148,6 +137,7 @@
     const openIcon = document.getElementById('menu-icon-open');
     const closeIcon = document.getElementById('menu-icon-close');
     const isHidden = menu.classList.contains('hidden');
+    document.getElementById('mobile-menu-btn').setAttribute('aria-expanded', isHidden ? 'true' : 'false');
 
     if (isHidden) {
       menu.classList.remove('hidden');

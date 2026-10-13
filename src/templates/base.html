@@ -6,6 +6,11 @@
   <title>{% block title %}Cheap Finder{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
+  <!-- Apply the saved theme before first paint so pages don't flash the wrong theme -->
+  <script>
+    try { if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark'); } catch (e) {}
+  </script>
+
   <!-- Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -50,9 +55,34 @@
     html:not(.dark) .light\:text-neutral-800 { color: #262626; }
     html:not(.dark) .light\:text-neutral-400 { color: #a3a3a3; }
     html:not(.dark) .light\:text-neutral-600 { color: #525252; }
+    html:not(.dark) .light\:text-neutral-500 { color: #737373; }
+    html:not(.dark) .light\:text-neutral-700 { color: #404040; }
+    html:not(.dark) .light\:bg-neutral-200 { background: #e5e5e5; }
+    html:not(.dark) .light\:border-neutral-100 { border-color: #f5f5f5; }
+    html:not(.dark) .light\:border-neutral-300 { border-color: #d4d4d4; }
+    html:not(.dark) .light\:hover\:text-neutral-900:hover { color: #0a0a0a; }
+    html:not(.dark) .light\:hover\:bg-neutral-100:hover { background: #f5f5f5; }
+    html:not(.dark) .light\:hover\:bg-neutral-200:hover { background: #e5e5e5; }
+    html:not(.dark) .light\:hover\:bg-neutral-300:hover { background: #d4d4d4; }
+    html:not(.dark) .light\:hover\:border-neutral-400:hover { border-color: #a3a3a3; }
+
+    /* Dark-only utilities that turn text invisible on a light background.
+       Many templates use these without a light: counterpart, so fix them once here. */
+    html:not(.dark) .hover\:text-white:hover { color: #0a0a0a; }
+    html:not(.dark) .text-neutral-200 { color: #262626; }
+    html:not(.dark) .text-neutral-300 { color: #404040; }
+
+    /* Makes a link cover its nearest positioned ancestor (used by product cards) */
+    .stretched-link::after { content: ''; position: absolute; inset: 0; z-index: 1; }
+    .stretched-link:focus-visible::after { outline: 2px solid #22c55e; outline-offset: -2px; border-radius: 0.5rem; }
+
+    /* Visible keyboard focus everywhere (mouse clicks don't trigger it) */
+    a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 2px solid #22c55e; outline-offset: 2px;
+    }
   </style>
 </head>
-<body class="bg-neutral-50 text-neutral-900 min-h-screen">
+<body class="bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100 min-h-screen">
   {% include "components/nav.html" %}
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -67,15 +97,7 @@
 
     function setTheme(theme) {
       localStorage.setItem('theme', theme);
-      if (theme === 'dark') {
-        document.documentElement.classList.add('dark');
-        document.body.classList.add('bg-neutral-950', 'text-neutral-100');
-        document.body.classList.remove('bg-neutral-50', 'text-neutral-900');
-      } else {
-        document.documentElement.classList.remove('dark');
-        document.body.classList.remove('bg-neutral-950', 'text-neutral-100');
-        document.body.classList.add('bg-neutral-50', 'text-neutral-900');
-      }
+      document.documentElement.classList.toggle('dark', theme === 'dark');
       updateThemeIcon(theme);
     }
 
@@ -116,13 +138,10 @@
       localStorage.setItem('cf_wishlist', JSON.stringify(list));
       // Update heart icons
       document.querySelectorAll('[data-wishlist-id="' + productId + '"]').forEach(function(el) {
-        if (list.includes(productId)) {
-          el.classList.add('text-red-500');
-          el.classList.remove('text-neutral-600');
-        } else {
-          el.classList.remove('text-red-500');
-          el.classList.add('text-neutral-600');
-        }
+        var saved = list.includes(productId);
+        el.classList.toggle('text-red-500', saved);
+        el.classList.toggle('text-white', !saved);
+        el.setAttribute('aria-pressed', saved ? 'true' : 'false');
       });
       updateWishlistBadge();
       // If on wishlist page, refresh the grid
@@ -146,7 +165,8 @@
       list.forEach(function(id) {
         document.querySelectorAll('[data-wishlist-id="' + id + '"]').forEach(function(el) {
           el.classList.add('text-red-500');
-          el.classList.remove('text-neutral-600');
+          el.classList.remove('text-white');
+          el.setAttribute('aria-pressed', 'true');
         });
       });
       updateWishlistBadge();

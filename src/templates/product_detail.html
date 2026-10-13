@@ -25,7 +25,7 @@
   <!-- Left: Image + Info -->
   <div>
     <!-- Image -->
-    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg overflow-hidden mb-6 flex items-center justify-center" style="max-height: 60vh;">
+    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg overflow-hidden flex items-center justify-center lg:sticky lg:top-6" style="max-height: 60vh;">
       {% if product.image_url %}
       <img src="{{ product.image_url }}" alt="{{ product.name }}" class="w-full object-contain" style="max-height: 60vh;"
            onerror="this.style.display='none';">
@@ -38,13 +38,17 @@
       {% endif %}
     </div>
 
+  </div>
+
+  <!-- Right: what it costs and where to buy it first, then the history -->
+  <div class="space-y-6">
     <!-- Product info -->
     <div class="space-y-4">
       <div>
         <span class="text-xs font-medium text-neutral-500 uppercase tracking-wider">
           {{ product.brand.name if product.brand else '' }}
         </span>
-        <h1 class="text-xl font-semibold text-white dark:text-white light:text-neutral-900 mt-1">
+        <h1 class="text-xl sm:text-2xl font-semibold text-white dark:text-white light:text-neutral-900 mt-1">
           {{ product.name }}
         </h1>
       </div>
@@ -66,7 +70,7 @@
       </div>
 
       <!-- Gender + Retailer + Link -->
-      <div class="flex items-center gap-4">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-3">
         {% if product.gender %}
         <span class="text-xs font-medium uppercase px-2 py-1 rounded
           {% if product.gender == 'men' %}text-blue-400 bg-blue-500/10
@@ -79,8 +83,8 @@
         <span class="text-sm text-neutral-400">{{ product.retailer.name }}</span>
         {% endif %}
         <a href="{{ product.url }}" target="_blank" rel="noopener"
-           class="text-sm text-green-500 hover:text-green-400 transition-colors flex items-center gap-1">
-          View at retailer
+           class="text-sm font-medium bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5">
+          {% if product.retailer %}Buy at {{ product.retailer.name }}{% else %}View at retailer{% endif %}
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
           </svg>
@@ -99,9 +103,11 @@
         <h3 class="text-sm font-medium text-neutral-400 uppercase tracking-wider mb-3">Also Available At</h3>
         <div class="space-y-2">
           {% for sp in similar_products %}
-          <a href="/products/{{ sp.id }}" class="flex items-center justify-between bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-3 hover:border-neutral-600 dark:hover:border-neutral-600 light:hover:border-neutral-400 transition-colors">
+          <div class="{% if loop.index > 5 %}hidden extra-retailer {% endif %}relative flex items-center justify-between bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-3 hover:border-neutral-600 dark:hover:border-neutral-600 light:hover:border-neutral-400 transition-colors">
             <div class="flex items-center gap-3 min-w-0">
-              <span class="text-sm font-medium text-neutral-300 dark:text-neutral-300 light:text-neutral-700 shrink-0">{{ sp.retailer.name }}</span>
+              <a href="{{ sp.url }}" target="_blank" rel="noopener"
+                 class="stretched-link text-sm font-medium text-neutral-300 dark:text-neutral-300 light:text-neutral-700 shrink-0 focus:outline-none"
+                 title="Open on {{ sp.retailer.name }}">{{ sp.retailer.name }}</a>
               <span class="text-xs text-neutral-500 truncate">{{ sp.name }}</span>
             </div>
             <div class="flex items-center gap-2 shrink-0 ml-3">
@@ -111,19 +117,48 @@
               {% if sp.current_price and product.current_price and sp.current_price < product.current_price %}
               <span class="text-[10px] font-medium text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded uppercase">Cheaper</span>
               {% endif %}
+              <a href="/products/{{ sp.id }}" class="relative z-10 p-1 text-neutral-500 hover:text-white transition-colors"
+                 title="Price history at {{ sp.retailer.name }}" aria-label="Price history at {{ sp.retailer.name }}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+              </a>
+              <svg class="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
             </div>
-          </a>
+          </div>
           {% endfor %}
         </div>
+        {% if similar_products | length > 5 %}
+        <button type="button"
+                onclick="document.querySelectorAll('.extra-retailer').forEach(function (el) { el.classList.remove('hidden'); }); this.remove();"
+                class="mt-2 text-xs text-neutral-500 hover:text-white transition-colors">
+          Show {{ similar_products | length - 5 }} more
+        </button>
+        {% endif %}
       </div>
       {% endif %}
     </div>
-  </div>
 
-  <!-- Right: Price chart -->
-  <div>
     {% set element_id = "price-chart" %}
     {% include "components/price_chart.html" %}
   </div>
 </div>
+{% if product.url %}
+<div class="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-neutral-800 dark:border-neutral-800 light:border-neutral-200 bg-neutral-950/95 dark:bg-neutral-950/95 light:bg-white backdrop-blur px-4 py-3 flex items-center justify-between gap-3"
+     style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom));">
+  <div class="min-w-0">
+    <div class="text-base font-semibold {% if product.on_sale %}text-green-500{% else %}text-white dark:text-white light:text-neutral-900{% endif %}">
+      {{ format_price(product.current_price) }}
+      {% if product.on_sale and product.original_price %}<span class="text-xs font-normal text-neutral-500 line-through ml-1">{{ format_price(product.original_price) }}</span>{% endif %}
+    </div>
+    {% if product.retailer %}<div class="text-xs text-neutral-500 truncate">at {{ product.retailer.name }}</div>{% endif %}
+  </div>
+  <a href="{{ product.url }}" target="_blank" rel="noopener"
+     class="shrink-0 text-sm font-medium bg-green-600 hover:bg-green-500 text-white px-5 py-2.5 rounded-lg transition-colors flex items-center gap-1.5">
+    Buy now
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+    </svg>
+  </a>
+</div>
+<div class="h-20 lg:hidden" aria-hidden="true"></div>
+{% endif %}
 {% endblock %}
