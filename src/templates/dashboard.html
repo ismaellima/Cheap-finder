@@ -2,10 +2,18 @@
 {% block title %}Dashboard — Cheap Finder{% endblock %}
 
 {% block content %}
-<!-- Header -->
-<div class="mb-8">
-  <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Dashboard</h1>
-  <p class="text-sm text-neutral-500 mt-1">Track fashion brands across Canadian retailers</p>
+<!-- Header: title with the headline numbers inline (they're context, not content) -->
+<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-6">
+  <div>
+    <h1 class="text-2xl font-semibold text-white dark:text-white light:text-neutral-900">Dashboard</h1>
+    <p class="text-sm text-neutral-500 mt-1">Track fashion brands across Canadian retailers</p>
+  </div>
+  <p class="text-xs text-neutral-500 flex flex-wrap gap-x-3 gap-y-1">
+    <span><span class="font-medium text-neutral-300 light:text-neutral-800">{{ "{:,}".format(stats.total_products) }}</span> products</span>
+    <span><span class="font-medium text-neutral-300 light:text-neutral-800">{{ stats.total_brands }}</span> brands</span>
+    <a href="/deals" class="hover:text-green-500 transition-colors"><span class="font-medium text-green-500">{{ "{:,}".format(stats.on_sale_now) }}</span> on sale</a>
+    <span>up to <span class="font-medium text-green-500">−{{ stats.max_discount_pct }}%</span></span>
+  </p>
 </div>
 
 <!-- Feedback banners -->
@@ -20,56 +28,74 @@
 </div>
 {% endif %}
 
-<!-- Stats strip -->
+<!-- Recently confirmed price drops: one horizontally scrolling row -->
 <section class="mb-10">
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
-      <div class="text-xl sm:text-2xl font-semibold text-white dark:text-white light:text-neutral-900">{{ "{:,}".format(stats.total_products) }}</div>
-      <div class="text-xs text-neutral-500 mt-1">products tracked</div>
-    </div>
-    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
-      <div class="text-xl sm:text-2xl font-semibold text-white dark:text-white light:text-neutral-900">{{ stats.total_brands }}</div>
-      <div class="text-xs text-neutral-500 mt-1">brands tracked</div>
-    </div>
-    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
-      <div class="text-xl sm:text-2xl font-semibold text-green-500">{{ "{:,}".format(stats.on_sale_now) }}</div>
-      <div class="text-xs text-neutral-500 mt-1">on sale now</div>
-    </div>
-    <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-4">
-      <div class="text-xl sm:text-2xl font-semibold text-green-500">-{{ stats.max_discount_pct }}%</div>
-      <div class="text-xs text-neutral-500 mt-1">biggest markdown</div>
-    </div>
-  </div>
-</section>
-
-<!-- Recently confirmed price drops -->
-<section class="mb-12">
-  <div class="flex items-center justify-between mb-1">
-    <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider">Latest Price Drops</h2>
+  <div class="flex items-center justify-between gap-3 mb-3">
+    <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wider"
+        title="Biggest drops re-confirmed in the last {{ rail_verified_days }} days, max 2 per brand and per retailer.">
+      Latest Price Drops
+    </h2>
     {% if rail_drops %}
-    <a href="/deals" class="text-xs text-green-500 hover:text-green-400 transition-colors">View all deals &rarr;</a>
+    <div class="flex items-center gap-2">
+      <button type="button" data-rail-scroll="-1" aria-label="Scroll drops left"
+              class="hidden sm:flex w-7 h-7 items-center justify-center rounded-full border border-neutral-800 light:border-neutral-200 text-neutral-400 hover:text-white disabled:opacity-30 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </button>
+      <button type="button" data-rail-scroll="1" aria-label="Scroll drops right"
+              class="hidden sm:flex w-7 h-7 items-center justify-center rounded-full border border-neutral-800 light:border-neutral-200 text-neutral-400 hover:text-white disabled:opacity-30 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </button>
+      <a href="/deals" class="text-xs text-green-500 hover:text-green-400 transition-colors ml-1">View all &rarr;</a>
+    </div>
     {% endif %}
   </div>
 
   {% if rail_drops %}
-  <p class="text-xs text-neutral-600 mb-4">Biggest drops re-confirmed in the last {{ rail_verified_days }} days, max 2 per brand and per retailer.</p>
-  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+  <div id="drops-rail"
+       class="flex gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 -mx-4 px-4 sm:mx-0 sm:px-0"
+       style="scrollbar-width: thin;">
     {% for product in rail_drops %}
-    <div>
+    <div class="w-40 sm:w-48 shrink-0 snap-start">
       {% include "components/product_card.html" %}
     </div>
     {% endfor %}
+    <a href="/deals"
+       class="w-40 sm:w-48 shrink-0 snap-start flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-neutral-800 light:border-neutral-300 text-sm text-neutral-400 hover:text-green-500 hover:border-green-500/40 transition-colors">
+      <span class="text-lg font-semibold text-green-500">{{ "{:,}".format(stats.on_sale_now) }}</span>
+      <span>See all deals &rarr;</span>
+    </a>
   </div>
   {% else %}
-  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg p-12 text-center">
-    <svg class="w-12 h-12 mx-auto mb-3 text-neutral-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/>
-    </svg>
+  <div class="bg-neutral-900 dark:bg-neutral-900 light:bg-white border border-neutral-800 dark:border-neutral-800 light:border-neutral-200 rounded-lg px-6 py-5 text-center">
     <p class="text-neutral-500 text-sm">No drops re-confirmed in the last {{ rail_verified_days }} days yet.</p>
     <p class="text-neutral-600 text-xs mt-1">Price checks run in rolling batches, so this fills in as they work through the catalogue.</p>
   </div>
   {% endif %}
 </section>
+
+{% if rail_drops %}
+<script>
+(function () {
+  var rail = document.getElementById('drops-rail');
+  var buttons = document.querySelectorAll('[data-rail-scroll]');
+  function update() {
+    buttons.forEach(function (b) {
+      b.disabled = b.dataset.railScroll === '-1'
+        ? rail.scrollLeft <= 0
+        : rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 1;
+    });
+  }
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      rail.scrollBy({ left: (+b.dataset.railScroll) * rail.clientWidth * 0.8 });
+    });
+  });
+  rail.addEventListener('scroll', update, { passive: true });
+  window.addEventListener('resize', update);
+  update();
+})();
+</script>
+{% endif %}
 
 <!-- Brands Grid -->
 <section class="mb-12" id="brands">

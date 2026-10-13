@@ -120,7 +120,7 @@ DEFAULT_CATEGORY_COLOR = "#8a8a8a"
 
 RAIL_DEALS_PER_BRAND = 2
 RAIL_DEALS_PER_RETAILER = 2
-RAIL_DEALS_TOTAL = 8
+RAIL_DEALS_TOTAL = 12  # single scrolling row, so extra cards cost no page height
 
 # The rail only shows drops whose price was actually re-confirmed this recently.
 # Note this keys off PriceRecord, not Product.last_checked: last_checked is
