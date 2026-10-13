@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+from typing import AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.db.models import AlertRule, Brand, BrandRetailer, PriceRecord, Product, Retailer
-from src.db.session import get_session
+from src.db.session import async_session, get_session
 
 router = APIRouter(prefix="/api/brands", tags=["brands"])
 
@@ -56,35 +58,33 @@ async def export_all(session: AsyncSession = Depends(get_session)):
     }
 
 
-@export_router.get("/export-full")
-async def export_full(session: AsyncSession = Depends(get_session)):
-    """Export all data (brands, retailers, products, prices) for full DB sync."""
-    brands_result = await session.execute(select(Brand).order_by(Brand.name))
-    brands = brands_result.scalars().all()
+# --- Full export (paginated) ---
+#
+# Prod runs on a 512 MB instance, and building every product and price record
+# into one dict took it down. The export is split instead: /export-full/meta
+# carries the small tables, and products and price records come in pages keyed
+# on id (?after_id=&limit=), so no request holds more than one page in memory.
+# /export-full still returns the whole thing, but streams it page by page.
 
-    retailers_result = await session.execute(select(Retailer).order_by(Retailer.name))
-    retailers = retailers_result.scalars().all()
+EXPORT_PAGE_DEFAULT = 1000
+EXPORT_PAGE_MAX = 5000
 
-    br_result = await session.execute(
-        select(BrandRetailer)
-        .options(selectinload(BrandRetailer.brand), selectinload(BrandRetailer.retailer))
-    )
-    brand_retailers = br_result.scalars().all()
 
-    products_result = await session.execute(
-        select(Product)
-        .options(selectinload(Product.brand), selectinload(Product.retailer))
-        .order_by(Product.id)
-    )
-    products = products_result.scalars().all()
+def _iso(value) -> str | None:
+    return value.isoformat() if value else None
 
-    # Join price_records with products to get product_url in a single query
-    prices_result = await session.execute(
-        select(PriceRecord, Product.url.label("product_url"))
-        .join(Product, PriceRecord.product_id == Product.id)
-        .order_by(PriceRecord.recorded_at)
-    )
-    prices = prices_result.all()
+
+async def _export_meta(session: AsyncSession) -> dict:
+    brands = (await session.execute(select(Brand).order_by(Brand.name))).scalars().all()
+    retailers = (await session.execute(select(Retailer).order_by(Retailer.name))).scalars().all()
+    br_rows = (
+        await session.execute(
+            select(BrandRetailer.brand_url, BrandRetailer.verified, Brand.slug, Retailer.slug)
+            .join(Brand, BrandRetailer.brand_id == Brand.id)
+            .join(Retailer, BrandRetailer.retailer_id == Retailer.id)
+            .order_by(BrandRetailer.id)
+        )
+    ).all()
 
     return {
         "brands": [
@@ -111,45 +111,157 @@ async def export_full(session: AsyncSession = Depends(get_session)):
         ],
         "brand_retailers": [
             {
-                "brand_slug": br.brand.slug,
-                "retailer_slug": br.retailer.slug,
-                "brand_url": br.brand_url or "",
-                "verified": br.verified,
+                "brand_slug": brand_slug,
+                "retailer_slug": retailer_slug,
+                "brand_url": brand_url or "",
+                "verified": verified,
             }
-            for br in brand_retailers
+            for brand_url, verified, brand_slug, retailer_slug in br_rows
         ],
-        "products": [
-            {
-                "name": p.name,
-                "brand_slug": p.brand.slug,
-                "retailer_slug": p.retailer.slug,
-                "url": p.url,
-                "image_url": p.image_url or "",
-                "thumbnail_url": p.thumbnail_url or "",
-                "sku": p.sku or "",
-                "gender": p.gender or "",
-                "sizes": p.sizes or "",
-                "current_price": p.current_price,
-                "original_price": p.original_price,
-                "on_sale": p.on_sale,
-                "tracked": p.tracked,
-                "last_checked": p.last_checked.isoformat() if p.last_checked else None,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
-            }
-            for p in products
-        ],
-        "price_records": [
-            {
-                "product_url": row.product_url,
-                "price": row.PriceRecord.price,
-                "original_price": row.PriceRecord.original_price,
-                "on_sale": row.PriceRecord.on_sale,
-                "currency": row.PriceRecord.currency,
-                "recorded_at": row.PriceRecord.recorded_at.isoformat() if row.PriceRecord.recorded_at else None,
-            }
-            for row in prices
-        ],
+        "counts": {
+            "products": await session.scalar(select(func.count(Product.id))),
+            "price_records": await session.scalar(select(func.count(PriceRecord.id))),
+        },
     }
+
+
+async def _export_products_page(
+    session: AsyncSession, after_id: int, limit: int
+) -> tuple[list[dict], int | None]:
+    """One page of products with id > after_id. Returns (items, next_after_id)."""
+    rows = (
+        await session.execute(
+            select(Product, Brand.slug, Retailer.slug)
+            .join(Brand, Product.brand_id == Brand.id)
+            .join(Retailer, Product.retailer_id == Retailer.id)
+            .where(Product.id > after_id)
+            .order_by(Product.id)
+            .limit(limit)
+        )
+    ).all()
+
+    items = [
+        {
+            "name": p.name,
+            "brand_slug": brand_slug,
+            "retailer_slug": retailer_slug,
+            "url": p.url,
+            "image_url": p.image_url or "",
+            "thumbnail_url": p.thumbnail_url or "",
+            "sku": p.sku or "",
+            "gender": p.gender or "",
+            "sizes": p.sizes or "",
+            "current_price": p.current_price,
+            "original_price": p.original_price,
+            "on_sale": p.on_sale,
+            "tracked": p.tracked,
+            "last_checked": _iso(p.last_checked),
+            "created_at": _iso(p.created_at),
+        }
+        for p, brand_slug, retailer_slug in rows
+    ]
+    next_after = rows[-1][0].id if len(rows) == limit else None
+    session.expunge_all()  # don't let the identity map grow across pages
+    return items, next_after
+
+
+async def _export_price_records_page(
+    session: AsyncSession, after_id: int, limit: int
+) -> tuple[list[dict], int | None]:
+    """One page of price records with id > after_id. Returns (items, next_after_id)."""
+    rows = (
+        await session.execute(
+            select(
+                PriceRecord.id,
+                PriceRecord.price,
+                PriceRecord.original_price,
+                PriceRecord.on_sale,
+                PriceRecord.currency,
+                PriceRecord.recorded_at,
+                Product.url,
+            )
+            .join(Product, PriceRecord.product_id == Product.id)
+            .where(PriceRecord.id > after_id)
+            .order_by(PriceRecord.id)
+            .limit(limit)
+        )
+    ).all()
+
+    items = [
+        {
+            "product_url": url,
+            "price": price,
+            "original_price": original_price,
+            "on_sale": on_sale,
+            "currency": currency,
+            "recorded_at": _iso(recorded_at),
+        }
+        for _id, price, original_price, on_sale, currency, recorded_at, url in rows
+    ]
+    next_after = rows[-1][0] if len(rows) == limit else None
+    return items, next_after
+
+
+@export_router.get("/export-full/meta")
+async def export_full_meta(session: AsyncSession = Depends(get_session)):
+    """Brands (with aliases), retailers, brand-retailer mappings, and row counts."""
+    return await _export_meta(session)
+
+
+@export_router.get("/export-full/products")
+async def export_full_products(
+    after_id: int = Query(0, ge=0),
+    limit: int = Query(EXPORT_PAGE_DEFAULT, ge=1, le=EXPORT_PAGE_MAX),
+    session: AsyncSession = Depends(get_session),
+):
+    """A page of products. Pass the returned next_after_id until it is null."""
+    items, next_after = await _export_products_page(session, after_id, limit)
+    return {"items": items, "next_after_id": next_after}
+
+
+@export_router.get("/export-full/price-records")
+async def export_full_price_records(
+    after_id: int = Query(0, ge=0),
+    limit: int = Query(EXPORT_PAGE_DEFAULT, ge=1, le=EXPORT_PAGE_MAX),
+    session: AsyncSession = Depends(get_session),
+):
+    """A page of price records. Pass the returned next_after_id until it is null."""
+    items, next_after = await _export_price_records_page(session, after_id, limit)
+    return {"items": items, "next_after_id": next_after}
+
+
+async def _stream_export_full() -> AsyncIterator[bytes]:
+    # The request's Depends session is closed before a streamed body is sent,
+    # so the generator opens its own.
+    async with async_session() as session:
+        meta = await _export_meta(session)
+        yield b"{"
+        for key in ("brands", "retailers", "brand_retailers"):
+            yield json.dumps(key).encode() + b":" + json.dumps(meta[key]).encode() + b","
+
+        for key, fetch_page in (
+            ("products", _export_products_page),
+            ("price_records", _export_price_records_page),
+        ):
+            yield json.dumps(key).encode() + b":["
+            after_id, first = 0, True
+            while after_id is not None:
+                items, after_id = await fetch_page(session, after_id, EXPORT_PAGE_DEFAULT)
+                for item in items:
+                    yield (b"" if first else b",") + json.dumps(item).encode()
+                    first = False
+            yield b"]" + (b"," if key == "products" else b"")
+        yield b"}"
+
+
+@export_router.get("/export-full")
+async def export_full():
+    """Export all data in one response, streamed so it never sits in memory.
+
+    Prefer the paginated /export-full/* endpoints (scripts/sync_from_prod.py
+    uses them): each page is a short request instead of one long one.
+    """
+    return StreamingResponse(_stream_export_full(), media_type="application/json")
 
 
 class BrandCreate(BaseModel):

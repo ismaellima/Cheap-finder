@@ -6,9 +6,9 @@ Usage:
     python scripts/sync_from_prod.py --url https://cheap-finder.onrender.com
     python scripts/sync_from_prod.py --password mypass
 
-Fetches /api/export-full from prod and syncs brands, retailers,
-brand-retailer mappings, products, and price records into your local
-SQLite DB. Existing data is matched by slug/URL — not duplicated.
+Fetches /api/export-full/{meta,products,price-records} from prod page by
+page and syncs brands, retailers, brand-retailer mappings, products, and
+price records into your local SQLite DB. Existing data is matched by slug/URL — not duplicated.
 """
 from __future__ import annotations
 
@@ -27,47 +27,88 @@ logger = logging.getLogger(__name__)
 DEFAULT_PROD_URL = "https://cheap-finder.onrender.com"
 
 
+PAGE_SIZE = 1000
+# Retries cover a cold start or a dropped connection, not a server that keeps
+# failing: every 5xx on the free tier may be the instance falling over, so give
+# up quickly rather than hammering it.
+MAX_ATTEMPTS = 2
+RETRY_DELAY_SECONDS = 10
+
+
+async def _get_json(client: httpx.AsyncClient, url: str, params: dict | None = None) -> dict:
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            resp = await client.get(url, params=params)
+        except httpx.TransportError as e:
+            if attempt == MAX_ATTEMPTS:
+                raise
+            logger.warning(f"  {url} failed ({e!r}), retrying in {RETRY_DELAY_SECONDS}s")
+            await asyncio.sleep(RETRY_DELAY_SECONDS)
+            continue
+
+        if resp.status_code == 200:
+            return resp.json()
+        if resp.status_code in (401, 403):
+            logger.error("Authentication required. Use --password flag.")
+            sys.exit(1)
+        if resp.status_code in (502, 503, 504) and attempt < MAX_ATTEMPTS:
+            logger.warning(f"  {url} returned {resp.status_code}, retrying in {RETRY_DELAY_SECONDS}s")
+            await asyncio.sleep(RETRY_DELAY_SECONDS)
+            continue
+        logger.error(f"Failed to fetch {url}: HTTP {resp.status_code}")
+        logger.error(resp.text[:500])
+        sys.exit(1)
+    raise AssertionError("unreachable")
+
+
+async def _fetch_pages(client: httpx.AsyncClient, url: str, label: str, total: int | None) -> list[dict]:
+    items: list[dict] = []
+    after_id: int | None = 0
+    while after_id is not None:
+        page = await _get_json(client, url, {"after_id": after_id, "limit": PAGE_SIZE})
+        items.extend(page["items"])
+        after_id = page["next_after_id"]
+        logger.info(f"  {label}: {len(items)}" + (f"/{total}" if total is not None else ""))
+    return items
+
+
 async def fetch_export(base_url: str, password: str | None = None) -> dict:
-    """Fetch /api/export-full from production."""
-    url = f"{base_url.rstrip('/')}/api/export-full"
-    logger.info(f"Fetching {url} ...")
+    """Fetch the full export from production, page by page.
 
-    async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
-        cookies = {}
+    Returns the same shape /api/export-full always had: brands, retailers,
+    brand_retailers, products, price_records.
+    """
+    base = f"{base_url.rstrip('/')}/api/export-full"
+    logger.info(f"Fetching {base}/* ...")
 
-        # If password protected, authenticate first
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+        # If password protected, authenticate first; the client keeps the cookie
         if password:
             login_resp = await client.post(
                 f"{base_url.rstrip('/')}/login",
                 data={"password": password},
                 follow_redirects=False,
             )
-            if login_resp.status_code in (302, 303):
-                cookies = dict(login_resp.cookies)
-            else:
+            if login_resp.status_code not in (302, 303):
                 logger.warning(f"Login returned {login_resp.status_code}, trying without auth")
 
-        resp = await client.get(url, cookies=cookies)
+        data = await _get_json(client, f"{base}/meta")
+        counts = data.pop("counts", {})
+        data["products"] = await _fetch_pages(
+            client, f"{base}/products", "products", counts.get("products")
+        )
+        data["price_records"] = await _fetch_pages(
+            client, f"{base}/price-records", "price records", counts.get("price_records")
+        )
 
-        if resp.status_code == 200:
-            data = resp.json()
-            logger.info(
-                f"  Got {len(data.get('brands', []))} brands, "
-                f"{len(data.get('retailers', []))} retailers, "
-                f"{len(data.get('brand_retailers', []))} mappings, "
-                f"{len(data.get('products', []))} products, "
-                f"{len(data.get('price_records', []))} price records"
-            )
-            return data
-        elif resp.status_code in (401, 403):
-            logger.error(
-                "Authentication required. Use --password flag."
-            )
-            sys.exit(1)
-        else:
-            logger.error(f"Failed to fetch export: HTTP {resp.status_code}")
-            logger.error(resp.text[:500])
-            sys.exit(1)
+    logger.info(
+        f"  Got {len(data['brands'])} brands, "
+        f"{len(data['retailers'])} retailers, "
+        f"{len(data['brand_retailers'])} mappings, "
+        f"{len(data['products'])} products, "
+        f"{len(data['price_records'])} price records"
+    )
+    return data
 
 
 async def sync_to_local(data: dict) -> None:
